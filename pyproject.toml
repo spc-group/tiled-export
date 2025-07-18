@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tiled-export"
+version = "0.0.0"
+authors = [
+  { name="Mark Wolfman", email="wolfman@anl.gov" },
+]
+description = "tiled-export"
+readme = "README.rst"
+requires-python = ">=3.9"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Physics",
+    "License :: OSI Approved :: MIT License",
+    "Typing :: Typed",
+]
+keywords = []
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["black", "pytest", "flake8", "isort", "mypy"]
+
+[project.urls]
+Homepage = "https://github.com/spc-group/tiled-export"
+
+[project.scripts]
+# command = "tiled_export.__main__:main"
