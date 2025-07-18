@@ -23,13 +23,13 @@ classifiers = [
     "Typing :: Typed",
 ]
 keywords = []
-dependencies = []
+dependencies = ["h5py", "tiled[client]", "tqdm", "tabulate", "httpx", "h2"]
 
 [project.optional-dependencies]
-dev = ["black", "pytest", "flake8", "isort", "mypy"]
+dev = ["black", "pytest", "flake8", "isort", "mypy", "pytest_httpx", "pytest-asyncio"]
 
 [project.urls]
 Homepage = "https://github.com/spc-group/tiled-export"
 
 [project.scripts]
-# command = "tiled_export.__main__:main"
+"export-runs" = "tiled_export.export:main"
