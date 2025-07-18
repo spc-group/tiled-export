@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tiled-export"
-version = "0.0.0"
+version = "0.1"
 authors = [
   { name="Mark Wolfman", email="wolfman@anl.gov" },
 ]
@@ -26,7 +26,7 @@ keywords = []
 dependencies = ["h5py", "tiled[client]", "tqdm", "tabulate", "httpx", "h2"]
 
 [project.optional-dependencies]
-dev = ["black", "pytest", "flake8", "isort", "mypy", "pytest_httpx", "pytest-asyncio"]
+dev = ["black", "pytest", "flake8", "isort", "mypy", "pytest_httpx", "pytest-asyncio", "build", "twine"]
 
 [project.urls]
 Homepage = "https://github.com/spc-group/tiled-export"
