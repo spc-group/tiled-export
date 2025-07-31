@@ -23,7 +23,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 keywords = []
-dependencies = ["h5py", "tiled[client]", "tqdm", "tabulate", "httpx", "h2"]
+dependencies = ["h5py", "tiled[client]", "tqdm", "tabulate", "httpx", "h2", "odfpy"]
 
 [project.optional-dependencies]
 dev = ["black", "pytest", "flake8", "isort", "mypy", "pytest_httpx", "pytest-asyncio", "build", "twine"]

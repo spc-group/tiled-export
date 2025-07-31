@@ -1,9 +1,10 @@
+import textwrap
 import argparse
 import asyncio
 import datetime as dt
 import re
 from pathlib import Path
-from typing import Sequence
+from typing import Sequence, Any, Generator
 from functools import partial
 import logging
 from uuid import uuid4
@@ -19,10 +20,15 @@ from tabulate import tabulate
 
 from tiled_export.catalog import Catalog, CatalogScan
 
+
+NEXUS_MIMETYPE = "application/x-nexus"
+XDI_MIMETYPE = "text/x-xdi"
+
+
 extensions = {
-    "application/x-nexus": ".hdf",
+    NEXUS_MIMETYPE: ".hdf",
     "text/tab-separated-values": ".tab",
-    "text/x-xdi": ".xdi",
+    XDI_MIMETYPE: ".xdi",
 }
 
 
@@ -41,17 +47,17 @@ def load_catalog(tiled_profile: str, catalog: str):
 
 
 async def export_run(
-    run: Container, *, base_dir: Path, use_xdi: bool = False, use_nexus: bool = False
+        run: Container, *, base_dir: Path, use_xdi: bool = False, use_nexus: bool = False, rewrite_hdf_links: bool = False
 ):
     # Decide on export formats
     valid_formats = await run.formats()
     target_formats = []
     if use_nexus:
-        target_formats.append("application/x-nexus")
+        target_formats.append(NEXUS_MIMETYPE)
     if use_xdi:
         target_formats.append(
-            "text/x-xdi"
-            if "text/x-xdi" in valid_formats
+            XDI_MIMETYPE
+            if MIMETYPE in valid_formats
             else "text/tab-separated-values"
         )
     # Retrieve needed metadata
@@ -89,6 +95,10 @@ async def export_run(
             await run.export(fp, format=fmt)
         except HTTPStatusError as exc:
             print(start_doc["uid"], exc)
+        else:
+            if fmt == NEXUS_MIMETYPE and rewrite_hdf_links:
+                with h5py.File(fp, mode='a') as fd:
+                    harden_external_links(fd[start_doc["uid"]])
     # Add an entry to the spreadsheet for this run
     spreadsheet_path = esaf_dir / "runs_summary.ods"
     if spreadsheet_path.exists():
@@ -107,7 +117,6 @@ async def export_run(
             ]
         )
     if start_doc["uid"] not in df.uid.values:
-
         # Add the row to the spreadsheet
         df.loc[len(df)] = [
             start_doc["uid"],
@@ -184,6 +193,7 @@ async def export_runs(
     runs: Sequence[CatalogScan],
     use_xdi: bool,
     use_nexus: bool,
+    rewrite_hdf_links: bool=False,
 ):
     valid_runs = []
     rows = []
@@ -197,14 +207,25 @@ async def export_runs(
     # Save a table of runs for
     # Do the exporting
     for run in tqdm(valid_runs, desc="Exporting", unit="runs"):
-        await export_run(run, base_dir=base_dir, use_xdi=use_xdi, use_nexus=use_nexus)
+        await export_run(run, base_dir=base_dir, use_xdi=use_xdi, use_nexus=use_nexus, rewrite_hdf_links=rewrite_hdf_links)
 
 
 def main():
     default_profile = get_default_profile_name()
     parser = argparse.ArgumentParser(
         prog="export-runs",
-        description="Export runs from the database as files on disk",
+        description="""Export runs from the database as files on disk.
+
+        """,
+        epilog=textwrap.dedent("""Note: exporting external datasets. It is non-trivial to include
+        large area detector datasets in an exported HDF5 (NeXus)
+        file. By default, the exported file contains external links to
+        the original area detector data. This keeps file sizes
+        manageable, but means the resulting file will only be usable
+        if the source files pointed to be the external links are
+        available. To make these links more portable, consider using
+        the --hdf-expand option, at the cost of larger file sizes and
+        considerably slower exporting."""),
     )
     parser.add_argument(
         "base_dir", help="The base directory for storing files.", type=str
@@ -248,8 +269,13 @@ def main():
     parser.add_argument("--uid", help="Export runs with this UID.", type=str)
     # Arguments for export formats
     parser.add_argument(
-        "--nexus",
+        "--hdf", "--nexus",
         help="Export files to HDF files with the NeXus schema",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--hdf-expand",
+        help="""Each exported HDF5 file will have external links replaced with the source data. This option will result in portable files with considerably larger file sizes and slower export times.""",
         action="store_true",
     )
     parser.add_argument(
@@ -282,21 +308,34 @@ def main():
         base_dir=base_dir,
         runs=runs,
         use_xdi=args.xdi,
-        use_nexus=args.nexus,
+        use_nexus=args.hdf,
+        rewrite_hdf_links=args.hdf_expand,
     )
     asyncio.run(do_export)
 
 
-def harden_link(parent: h5py.File | h5py.Group, link_path: str):
-    """Replace the link *link_path* in *link_file* with data at
-    *src_path* in *src_file*.
+def external_data_links(entry: h5py.Group) -> Generator[tuple[h5py.Group, h5py.ExternalLink], Any, None]:
+    """Generator for all the nxdata groups that are external links."""
+    for stream in entry['instrument/bluesky/streams'].values():
+        for data in stream.values():
+            link = data.get("value", getlink=True)
+            if isinstance(link, h5py.ExternalLink):
+                yield data, link
 
-    """
-    link = parent.get(link_path, getlink=True)
-    temp_path = f"{link_path}-{uuid4()}"
-    parent.copy(link_path, temp_path, expand_soft=True, expand_external=True, without_attrs=False)
-    del parent[link_path]
-    parent.move(temp_path, link_path)
+
+def harden_external_links(entry: h5py.Group):
+    """Replace external links with copies of the target."""
+    src_filename = Path(entry.file.filename)
+    for data, link in external_data_links(entry):
+        # Sort out where all the paths should point
+        target_path, path = Path(link.filename), link.path
+        # Copy the dataset into the target HDF5 file
+        with h5py.File(target_path, mode='r') as target_fd:
+            # Make sure the dataset exists first, then replace it
+            target_fd[path]
+            del data["value"]
+            target_fd.copy(target_fd[path], data, "value")
+
 
 # -----------------------------------------------------------------------------
 # :author:    Mark Wolfman
