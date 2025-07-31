@@ -1,38 +1,40 @@
-import textwrap
 import argparse
 import asyncio
 import datetime as dt
-import re
-from pathlib import Path
-from typing import Sequence, Any, Generator
-from functools import partial
 import logging
-from uuid import uuid4
+import re
+import textwrap
+from collections.abc import AsyncIterable, Generator
+from functools import partial
+from pathlib import Path
+from typing import Any
 
 import h5py
-from httpx import HTTPStatusError
 import pandas as pd
-from tiled import queries
-from tiled.client.container import Container
-from tiled.profiles import get_default_profile_name, load_profiles, ProfileNotFound
-from tqdm.asyncio import tqdm
+from httpx import HTTPStatusError
 from tabulate import tabulate
+from tiled import queries
+from tiled.profiles import ProfileNotFound, get_default_profile_name, load_profiles
+from tqdm.asyncio import tqdm
 
 from tiled_export.catalog import Catalog, CatalogScan
 
-
 NEXUS_MIMETYPE = "application/x-nexus"
 XDI_MIMETYPE = "text/x-xdi"
-
+TSV_MIMETYPE = "text/tab-separated-values"
 
 extensions = {
     NEXUS_MIMETYPE: ".hdf",
-    "text/tab-separated-values": ".tab",
+    TSV_MIMETYPE: ".tab",
     XDI_MIMETYPE: ".xdi",
 }
 
 
 log = logging.getLogger("haven")
+
+
+class IncompleteRun(ValueError):
+    pass
 
 
 def load_catalog(tiled_profile: str, catalog: str):
@@ -43,11 +45,16 @@ def load_catalog(tiled_profile: str, catalog: str):
         raise ProfileNotFound(
             f"Profile {tiled_profile!r} not found. Found profiles {list(profiles)}."
         ) from err
-    return Catalog(catalog, uri=profile_content['uri'])    
+    return Catalog(catalog, uri=profile_content["uri"])
 
 
 async def export_run(
-        run: Container, *, base_dir: Path, use_xdi: bool = False, use_nexus: bool = False, rewrite_hdf_links: bool = False
+    run: CatalogScan,
+    *,
+    base_dir: Path,
+    use_xdi: bool = False,
+    use_nexus: bool = False,
+    rewrite_hdf_links: bool = False,
 ):
     # Decide on export formats
     valid_formats = await run.formats()
@@ -56,22 +63,20 @@ async def export_run(
         target_formats.append(NEXUS_MIMETYPE)
     if use_xdi:
         target_formats.append(
-            XDI_MIMETYPE
-            if MIMETYPE in valid_formats
-            else "text/tab-separated-values"
+            XDI_MIMETYPE if XDI_MIMETYPE in valid_formats else TSV_MIMETYPE
         )
     # Retrieve needed metadata
     md = await run.metadata
-    start_doc = md["start"]
+    start_doc = md.get("start", {})
     esaf = start_doc.get("esaf_id", "noesaf")
     pi_name = "nopi"
-    start_time = dt.datetime.fromtimestamp(start_doc.get("time"))
+    start_time = dt.datetime.fromtimestamp(start_doc.get("time", 0))
     # Decide on how to structure the file storage
     esaf_dir = base_dir / f"{pi_name}_{start_time.strftime('%Y-%m')}_{esaf}"
     sample_name = start_doc.get("sample_name")
     scan_name = start_doc.get("scan_name")
-    plan_name = start_doc["plan_name"]
-    uid_base = start_doc["uid"].split("-")[0]
+    plan_name = start_doc.get("plan_name")
+    uid_base = start_doc.get("uid", "").split("-")[0]
     bits = [
         start_time.strftime("%Y%m%d%H%M"),
         sample_name,
@@ -97,7 +102,7 @@ async def export_run(
             print(start_doc["uid"], exc)
         else:
             if fmt == NEXUS_MIMETYPE and rewrite_hdf_links:
-                with h5py.File(fp, mode='a') as fd:
+                with h5py.File(fp, mode="a") as fd:
                     harden_external_links(fd[start_doc["uid"]])
     # Add an entry to the spreadsheet for this run
     spreadsheet_path = esaf_dir / "runs_summary.ods"
@@ -116,11 +121,11 @@ async def export_run(
                 "filebase",
             ]
         )
-    if start_doc["uid"] not in df.uid.values:
+    if start_doc.get("uid") not in df.uid.values:
         # Add the row to the spreadsheet
         df.loc[len(df)] = [
-            start_doc["uid"],
-            start_doc["time"],
+            start_doc.get("uid", ""),
+            start_doc.get("time", ""),
             start_time.isoformat(),
             md.get("stop", {}).get("exit_status", ""),
             start_doc.get("sample_name", ""),
@@ -147,10 +152,13 @@ def build_queries(
     uid: str | None = None,
 ) -> list[queries.NoBool]:
     # Parse datestrings
+    before_ts: float | None = None
+    after_ts: float | None = None
     if before is not None:
-        before = dt.datetime.fromisoformat(before).timestamp()
+        before_ts = dt.datetime.fromisoformat(before).timestamp()
     if after is not None:
-        after = dt.datetime.fromisoformat(after).timestamp()
+        after_ts = dt.datetime.fromisoformat(after).timestamp()
+    # Process the queries parameters into actual queries
     qs = []
     query_params = [
         # filter_name: (query type, metadata key)
@@ -163,25 +171,26 @@ def build_queries(
         (proposal, queries.Eq, "start.proposal_id"),
         (beamline, queries.Contains, "start.beamline_id"),
         (esaf, queries.Eq, "start.esaf_id"),
-        (before, partial(queries.Comparison, "le"), "stop.time"),
-        (after, partial(queries.Comparison, "ge"), "start.time"),
+        (before_ts, partial(queries.Comparison, "le"), "stop.time"),
+        (after_ts, partial(queries.Comparison, "ge"), "start.time"),
         (uid, queries.Contains, "start.uid"),
     ]
-    for (arg, query, key) in query_params:
+    for arg, query, key in query_params:
         if arg is not None:
             qs.append(query(key, arg))
+
     return qs
 
 
 async def table_row(run: CatalogScan) -> list[str]:
     md = await run.metadata
-    start_time = dt.datetime.fromtimestamp(md["start"]["time"])
-    start_time = start_time.strftime("%Y-%m-%d %H:%M:%S")
+    start_dt = dt.datetime.fromtimestamp(md["start"]["time"])
+    start_time = start_dt.strftime("%Y-%m-%d %H:%M:%S")
     return [
         md["start"]["uid"],
         start_time,
         md.get("stop", {}).get("exit_status", ""),
-        md['start'].get("beamline_id", ""),
+        md["start"].get("beamline_id", ""),
         md["start"].get("sample_name", ""),
         md["start"].get("scan_name", ""),
         md["start"].get("plan_name", ""),
@@ -190,10 +199,10 @@ async def table_row(run: CatalogScan) -> list[str]:
 
 async def export_runs(
     base_dir: Path,
-    runs: Sequence[CatalogScan],
+    runs: AsyncIterable[CatalogScan],
     use_xdi: bool,
     use_nexus: bool,
-    rewrite_hdf_links: bool=False,
+    rewrite_hdf_links: bool = False,
 ):
     valid_runs = []
     rows = []
@@ -207,7 +216,13 @@ async def export_runs(
     # Save a table of runs for
     # Do the exporting
     for run in tqdm(valid_runs, desc="Exporting", unit="runs"):
-        await export_run(run, base_dir=base_dir, use_xdi=use_xdi, use_nexus=use_nexus, rewrite_hdf_links=rewrite_hdf_links)
+        await export_run(
+            run,
+            base_dir=base_dir,
+            use_xdi=use_xdi,
+            use_nexus=use_nexus,
+            rewrite_hdf_links=rewrite_hdf_links,
+        )
 
 
 def main():
@@ -217,7 +232,8 @@ def main():
         description="""Export runs from the database as files on disk.
 
         """,
-        epilog=textwrap.dedent("""Note: exporting external datasets. It is non-trivial to include
+        epilog=textwrap.dedent(
+            """Note: exporting external datasets. It is non-trivial to include
         large area detector datasets in an exported HDF5 (NeXus)
         file. By default, the exported file contains external links to
         the original area detector data. This keeps file sizes
@@ -225,28 +241,41 @@ def main():
         if the source files pointed to be the external links are
         available. To make these links more portable, consider using
         the --hdf-expand option, at the cost of larger file sizes and
-        considerably slower exporting."""),
+        considerably slower exporting."""
+        ),
     )
     parser.add_argument(
         "base_dir", help="The base directory for storing files.", type=str
     )
+    parser.add_argument("-v", "--verbose", help="Verbose output", action="store_true")
+    parser.add_argument("-q", "--quiet", help="Verbose output", action="store_true")
     parser.add_argument(
-        "-v", "--verbose", help="Verbose output", action="store_true"
+        "-p",
+        "--tiled-profile",
+        help="Profile for the Tiled client, or else the default profile will be used. See https://blueskyproject.io/tiled/how-to/profiles.html",
+        type=str,
+        default=default_profile,
     )
     parser.add_argument(
-        "-q", "--quiet", help="Verbose output", action="store_true"
-    )
-    parser.add_argument(
-        "-p", "--tiled-profile", help="Profile for the Tiled client, or else the default profile will be used. See https://blueskyproject.io/tiled/how-to/profiles.html", type=str, default=default_profile,
-    )
-    parser.add_argument(
-        "-c", "--catalog", help="Catalog name in the Tiled server. Default: scans", default="scans", type=str
+        "-c",
+        "--catalog",
+        help="Catalog name in the Tiled server. Default: scans",
+        default="scans",
+        type=str,
     )
     # Arguments for filtering runs
-    parser.add_argument("--failed", help="Also include scans that did not complete.", action="store_true")
+    parser.add_argument(
+        "--failed",
+        help="Also include scans that did not complete.",
+        action="store_true",
+    )
     parser.add_argument("--plan", help="Export runs with plan name.", type=str)
     parser.add_argument("--sample", help="Export runs with this sample name.", type=str)
-    parser.add_argument("--formula", help="Export runs with samples matching this chemical formula.", type=str)
+    parser.add_argument(
+        "--formula",
+        help="Export runs with samples matching this chemical formula.",
+        type=str,
+    )
     parser.add_argument("--scan", help="Export runs with this scan name.", type=str)
     parser.add_argument("--edge", help="Export runs with this edge.", type=str)
     parser.add_argument("--esaf", help="Export runs with this ESAF ID.", type=str)
@@ -254,7 +283,8 @@ def main():
         "--proposal", help="Export runs with this proposal ID.", type=str
     )
     parser.add_argument(
-        "--beamline", help="Export runs only on this beamline. Incomplete matches are allowed, so '25-ID' will match both '25-ID-C' and '25-ID-D'."
+        "--beamline",
+        help="Export runs only on this beamline. Incomplete matches are allowed, so '25-ID' will match both '25-ID-C' and '25-ID-D'.",
     )
     parser.add_argument(
         "--before",
@@ -269,7 +299,8 @@ def main():
     parser.add_argument("--uid", help="Export runs with this UID.", type=str)
     # Arguments for export formats
     parser.add_argument(
-        "--hdf", "--nexus",
+        "--hdf",
+        "--nexus",
         help="Export files to HDF files with the NeXus schema",
         action="store_true",
     )
@@ -291,7 +322,10 @@ def main():
     catalog = load_catalog(catalog=args.catalog, tiled_profile=args.tiled_profile)
     exit_status = None if args.failed else "success"
     qs = build_queries(
-        before=args.before, after=args.after, esaf=args.esaf, proposal=args.proposal,
+        before=args.before,
+        after=args.after,
+        esaf=args.esaf,
+        proposal=args.proposal,
         beamline=args.beamline,
         plan_name=args.plan,
         sample_name=args.sample,
@@ -314,9 +348,11 @@ def main():
     asyncio.run(do_export)
 
 
-def external_data_links(entry: h5py.Group) -> Generator[tuple[h5py.Group, h5py.ExternalLink], Any, None]:
+def external_data_links(
+    entry: h5py.Group,
+) -> Generator[tuple[h5py.Group, h5py.ExternalLink], Any, None]:
     """Generator for all the nxdata groups that are external links."""
-    for stream in entry['instrument/bluesky/streams'].values():
+    for stream in entry["instrument/bluesky/streams"].values():
         for data in stream.values():
             link = data.get("value", getlink=True)
             if isinstance(link, h5py.ExternalLink):
@@ -330,7 +366,7 @@ def harden_external_links(entry: h5py.Group):
         # Sort out where all the paths should point
         target_path, path = Path(link.filename), link.path
         # Copy the dataset into the target HDF5 file
-        with h5py.File(target_path, mode='r') as target_fd:
+        with h5py.File(target_path, mode="r") as target_fd:
             # Make sure the dataset exists first, then replace it
             target_fd[path]
             del data["value"]

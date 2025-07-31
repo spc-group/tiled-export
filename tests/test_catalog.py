@@ -7,7 +7,8 @@ import pytest
 from pytest_httpx import IteratorStream
 from tiled import queries
 
-from tiled_export.catalog import Catalog, CatalogScan, deserialize_array, resolve_uri, unsnake
+from tiled_export.catalog import (Catalog, CatalogScan, deserialize_array,
+                                  resolve_uri, unsnake)
 
 run_metadata_re = re.compile(
     r"^http://localhost:8000/api/v1/metadata/([a-z]+)/([-a-z0-9]+)$"

@@ -33,3 +33,11 @@ Homepage = "https://github.com/spc-group/tiled-export"
 
 [project.scripts]
 "export-runs" = "tiled_export.export:main"
+
+[tool.isort]
+profile = "black"
+
+[tool.mypy]
+files = ["src/"]
+follow_imports = "skip"
+follow_untyped_imports = true

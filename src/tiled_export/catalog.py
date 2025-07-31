@@ -2,21 +2,17 @@ import asyncio
 import itertools
 import logging
 import warnings
-from collections.abc import Generator, Sequence
+from collections.abc import AsyncGenerator, Buffer, Sequence
 from pathlib import Path
-from typing import IO, Mapping
-from urllib.parse import parse_qs, quote_plus, urlparse
+from typing import IO, Any, Mapping
+from urllib.parse import parse_qs, urlparse
 
-import httpx
 import httpcore
+import httpx
 import numpy as np
 import pandas as pd
 import stamina
-from tiled.client import from_profile as tiled_from_profile
-from tiled.client.base import BaseClient
-from tiled.client.cache import Cache
 from tiled.client.container import _queries_to_params
-from tiled.profiles import get_default_profile_name
 from tiled.queries import NoBool
 from tiled.serialization.table import deserialize_arrow
 from tiled.structures.array import BuiltinDtype
@@ -71,7 +67,7 @@ class DEFAULT:
     pass
 
 
-def deserialize_array(stream: IO[bytes], structure: dict):
+def deserialize_array(stream: Buffer, structure: dict):
     dtype = BuiltinDtype.from_json(structure["data_type"])
     arr = np.frombuffer(stream, dtype=dtype.to_numpy_dtype())
     arr = arr.reshape(structure["shape"])
@@ -183,8 +179,8 @@ class CatalogScan:
     def __init__(
         self,
         path: str,
+        client: httpx.AsyncClient,
         metadata: Mapping | None = None,
-        client: httpx.AsyncClient | None = None,
     ):
         self.path = Path(path)
         self._client = client
@@ -192,11 +188,11 @@ class CatalogScan:
 
     @property
     def client(self):
-        if self._client is None:
-            tiled_config = load_config()["tiled"]
-            base_uri = tiled_config.get("uri", "http://localhost:8000/api")
-            base_uri = resolve_uri(base_uri)
-            self._client = httpx.AsyncClient(base_url=base_uri, timeout=10)
+        # if self._client is None:
+        #     tiled_config = load_config()["tiled"]
+        #     base_uri = tiled_config.get("uri", "http://localhost:8000/api")
+        #     base_uri = resolve_uri(base_uri)
+        #     self._client = httpx.AsyncClient(base_url=base_uri, timeout=10)
         return self._client
 
     async def stream_names(self):
@@ -205,7 +201,6 @@ class CatalogScan:
         return names
 
     async def _read_data(self, signals: Sequence[str] | None, dataset: str):
-        params = {}
         path = str(self.path / dataset).rstrip("/")
         # First figure out what kind of data we're getting
         response = await self.client.get(f"metadata/{sanitize_path(path)}")
@@ -242,7 +237,7 @@ class CatalogScan:
             async for chunk in response.aiter_bytes():
                 buff.write(chunk)
 
-    async def export(self, filename: str, format: str):
+    async def export(self, filename: str | Path, format: str):
         with open(filename, mode="bw") as fd:
             await self._export(fd, format=format)
 
@@ -432,7 +427,7 @@ class Catalog:
         queries: Sequence[NoBool] = (),
         sort: Sequence[str] = (),
         batch_size: int = 100,
-    ) -> Generator[CatalogScan, None, None]:
+    ) -> AsyncGenerator[CatalogScan, Any]:
         """All the scans in the catalog matching the given criteria.
 
         This is a batched iterator that will fetch the next batch of
@@ -467,8 +462,8 @@ class Catalog:
 
         """
         path = f"distinct/{sanitize_path(self.path)}"
-        params = self._search_params(queries=queries)
-        params = [{"metadata": key, **params} for key in metadata_keys]
+        params_ = self._search_params(queries=queries)
+        params = [{"metadata": key, **params_} for key in metadata_keys]
         aws = [self.client.get(path, params=param) for param in params]
         for next_response in aws:
             try:
@@ -480,10 +475,6 @@ class Catalog:
                 log.exception(exc)
             else:
                 yield response.json()["metadata"]
-
-
-def from_profile(catalog: str = "scans", profile: str = "haven") -> Catalog:
-    pass
 
 
 # -----------------------------------------------------------------------------
