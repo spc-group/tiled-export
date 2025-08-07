@@ -37,7 +37,7 @@ class IncompleteRun(ValueError):
     pass
 
 
-def load_catalog(tiled_profile: str, catalog: str):
+def load_catalog(tiled_profile: str):
     profiles = load_profiles()
     try:
         filepath, profile_content = profiles[tiled_profile]
@@ -45,7 +45,7 @@ def load_catalog(tiled_profile: str, catalog: str):
         raise ProfileNotFound(
             f"Profile {tiled_profile!r} not found. Found profiles {list(profiles)}."
         ) from err
-    return Catalog(catalog, uri=profile_content["uri"])
+    return Catalog(uri=profile_content["uri"])
 
 
 async def export_run(
@@ -256,13 +256,6 @@ def main():
         type=str,
         default=default_profile,
     )
-    parser.add_argument(
-        "-c",
-        "--catalog",
-        help="Catalog name in the Tiled server. Default: scans",
-        default="scans",
-        type=str,
-    )
     # Arguments for filtering runs
     parser.add_argument(
         "--failed",
@@ -319,7 +312,7 @@ def main():
     if not args.quiet:
         logging.basicConfig(level=log_level)
     # Get the list of runs we need
-    catalog = load_catalog(catalog=args.catalog, tiled_profile=args.tiled_profile)
+    catalog = load_catalog(tiled_profile=args.tiled_profile)
     exit_status = None if args.failed else "success"
     qs = build_queries(
         before=args.before,

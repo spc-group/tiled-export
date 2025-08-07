@@ -83,7 +83,7 @@ async def _search(path: str, client: httpx.AsyncClient, params: dict = {}):
 
     """
     # Build query parameters
-    next_url = "/".join(["search", sanitize_path(path)]).rstrip("/") + "/"
+    next_url = as_path("search", path)
     # Get search results from API
     while next_url is not None:
         # Re-use the query parameters
@@ -112,7 +112,7 @@ async def _search(path: str, client: httpx.AsyncClient, params: dict = {}):
 async def get_table(
     path: str, structure: dict, client: httpx.AsyncClient
 ) -> pd.DataFrame:
-    url = f"table/full/{sanitize_path(path)}"
+    url = as_path("table", "full", path)
     response = await client.get(url, timeout=20)
     response.raise_for_status()
     return deserialize_arrow(response.content)
@@ -121,7 +121,7 @@ async def get_table(
 async def get_array(
     path: str, structure: dict, client: httpx.AsyncClient
 ) -> np.ndarray:
-    url = f"array/block/{sanitize_path(path)}"
+    url = as_path("array", ",block", path)
     chunks = structure["chunks"]
     num_blocks = (range(len(n)) for n in chunks)
     blocks = itertools.product(*num_blocks)
@@ -182,7 +182,7 @@ class CatalogScan:
         client: httpx.AsyncClient,
         metadata: Mapping | None = None,
     ):
-        self.path = Path(path)
+        self.path = path
         self._client = client
         self._metadata = metadata
 
@@ -196,14 +196,14 @@ class CatalogScan:
         return self._client
 
     async def stream_names(self):
-        streams = _search(path=str(self.path / "streams"), client=self.client)
+        streams = _search(path=as_path(self.path, "streams"), client=self.client)
         names = [stream["id"] async for stream in streams]
         return names
 
     async def _read_data(self, signals: Sequence[str] | None, dataset: str):
-        path = str(self.path / dataset).rstrip("/")
+        path = as_path(self.path, dataset)
         # First figure out what kind of data we're getting
-        response = await self.client.get(f"metadata/{sanitize_path(path)}")
+        response = await self.client.get(as_path("metadata", path))
         response.raise_for_status()
         md = response.json()["data"]["attributes"]
         structure_family = md["structure_family"]
@@ -225,7 +225,7 @@ class CatalogScan:
 
     @stamina.retry(on=httpcore.ReadTimeout, attempts=3)
     async def _export(self, buff: IO[bytes], format: str):
-        url = f"container/full/{sanitize_path(str(self.path))}"
+        url = as_path("container", "full", self.path)
         async with self.client.stream(
             "GET", url, params={"format": format}, timeout=30
         ) as response:
@@ -300,7 +300,7 @@ class CatalogScan:
         """
         run_md, stream_md = await asyncio.gather(
             self.metadata,
-            self._read_metadata(path=f"streams/{stream}"),
+            self._read_metadata(path=as_path("streams", stream)),
         )
         stream_md = stream_md["metadata"]
         # Get hints for the independent (X)
@@ -320,10 +320,8 @@ class CatalogScan:
         return independent, dependent
 
     async def _read_metadata(self, path: str = ""):
-        new_path = str(self.path / path).rstrip("/")
-        response = await self.client.get(
-            f"metadata/{sanitize_path(new_path)}",
-        )
+        new_path = as_path("metadata", self.path, path)
+        response = await self.client.get(new_path)
         response.raise_for_status()
         return response.json()["data"]["attributes"]
 
@@ -353,6 +351,14 @@ class CatalogScan:
         if "snaking" in metadata["start"]:
             arr = unsnake(arr, metadata["start"]["snaking"])
         return arr
+
+
+def as_path(*steps: str) -> str:
+    steps = tuple(str(step).strip("/") for step in steps)
+    steps = tuple(step for step in steps if step != "")
+    path = "/".join(steps)
+    path = sanitize_path(path)
+    return path + "/"
 
 
 def sanitize_path(path: str) -> str:
@@ -388,12 +394,12 @@ class Catalog:
 
     def __init__(
         self,
-        path: str,
+        path_prefix: str = "",
         uri: str = "http://localhost:8000",
         client: httpx.AsyncClient | None = None,
     ):
         self.base_uri = resolve_uri(uri)
-        self.path = path
+        self.path_prefix = path_prefix
         self._client = client  # Created on first use if `None`
 
     @property
@@ -404,7 +410,7 @@ class Catalog:
 
     def __getitem__(self, uid) -> CatalogScan:
         # Check that the child exists in this container
-        new_path = f"{self.path}/{uid}"
+        new_path = as_path(self.path_prefix, uid)
         # Create the child scan object
         scan = CatalogScan(path=new_path, client=self.client)
         return scan
@@ -437,10 +443,14 @@ class Catalog:
         # Build query parameters
         params = self._search_params(queries=queries, sort=sort)
         # Get search results from API
-        async for run in _search(path=self.path, params=params, client=self.client):
+        async for run in _search(
+            path=self.path_prefix, params=params, client=self.client
+        ):
             md = run.get("attributes", {}).get("metadata")
             yield CatalogScan(
-                path=f"{self.path}/{run['id']}", metadata=md, client=self.client
+                path=as_path(self.path_prefix, run["id"]),
+                metadata=md,
+                client=self.client,
             )
 
     async def distinct(
@@ -461,7 +471,7 @@ class Catalog:
         >>> await catalog.distinct("foo", "bar", counts=True)
 
         """
-        path = f"distinct/{sanitize_path(self.path)}"
+        path = as_path("distinct", self.path_prefix)
         params_ = self._search_params(queries=queries)
         params = [{"metadata": key, **params_} for key in metadata_keys]
         aws = [self.client.get(path, params=param) for param in params]

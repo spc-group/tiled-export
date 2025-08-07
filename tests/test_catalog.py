@@ -8,10 +8,10 @@ from pytest_httpx import IteratorStream
 from tiled import queries
 
 from tiled_export.catalog import (Catalog, CatalogScan, deserialize_array,
-                                  resolve_uri, unsnake)
+                                  resolve_uri, unsnake, as_path)
 
 run_metadata_re = re.compile(
-    r"^http://localhost:8000/api/v1/metadata/([a-z]+)/([-a-z0-9]+)$"
+    r"^http://localhost:8000/api/v1/metadata/([a-z]+/)?([-a-z0-9]+)/?$"
 )
 
 
@@ -52,12 +52,12 @@ def run(httpx_mock):
         is_optional=True,
     )
     client = httpx.AsyncClient(base_url="http://localhost:8000/api/v1/")
-    return CatalogScan(path="scans/518edf43-7370-4670-8e61-e1e18a8152cf", client=client)
+    return CatalogScan(path="518edf43-7370-4670-8e61-e1e18a8152cf", client=client)
 
 
 @pytest.fixture()
 def catalog():
-    return Catalog(uri="http://localhost:8000/", path="scans")
+    return Catalog(uri="http://localhost:8000/")
 
 
 @pytest.fixture()
@@ -105,7 +105,7 @@ async def test_distinct(catalog, httpx_mock):
     }
     httpx_mock.add_response(
         json={"metadata": distinct},
-        url="http://localhost:8000/api/v1/distinct/scans?metadata=plan_name",
+        url="http://localhost:8000/api/v1/distinct/?metadata=plan_name",
     )
     assert [run async for run in catalog.distinct("plan_name")] == [distinct]
 
@@ -122,11 +122,11 @@ def search_api(httpx_mock):
         json={
             "data": [{"id": "scan1"}],
             "links": {
-                "next": "http://localhost:8000/api/v1/search/scans/pt2",
+                "next": "http://localhost:8000/api/v1/search/pt2",
             },
         },
         url=httpx.URL(
-            "http://localhost:8000/api/v1/search/scans/",
+            "http://localhost:8000/api/v1/search/",
             params=params,
         ),
     )
@@ -139,7 +139,7 @@ def search_api(httpx_mock):
             },
         },
         url=httpx.URL(
-            "http://localhost:8000/api/v1/search/scans/pt2",
+            "http://localhost:8000/api/v1/search/pt2",
             params=params,
         ),
     )
@@ -311,7 +311,7 @@ async def test_formats(run, httpx_mock):
 @pytest.mark.asyncio
 async def test_export(run, httpx_mock):
     httpx_mock.add_response(
-        url="http://localhost:8000/api/v1/container/full/scans/518edf43-7370-4670-8e61-e1e18a8152cf?format=text%2Ftab-separate-values",
+        url="http://localhost:8000/api/v1/container/full/518edf43-7370-4670-8e61-e1e18a8152cf/?format=text%2Ftab-separate-values",
         stream=IteratorStream([b"hello\n", b"world\n"]),
     )
     buff = io.BytesIO()
@@ -320,6 +320,11 @@ async def test_export(run, httpx_mock):
     streamed = buff.read()
     assert streamed == b"hello\nworld\n"
 
+
+def test_catalog_path_prefix():
+    assert as_path("streams", "primary") == "streams/primary/"
+    assert as_path("streams", "", "primary") == "streams/primary/"
+    
 
 # -----------------------------------------------------------------------------
 # :author:    Mark Wolfman
