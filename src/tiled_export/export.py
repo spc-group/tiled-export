@@ -1,10 +1,11 @@
+import os
 import argparse
 import asyncio
 import datetime as dt
 import logging
 import re
 import textwrap
-from collections.abc import AsyncIterable, Generator
+from collections.abc import AsyncIterable, Generator, Sequence
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -51,7 +52,7 @@ def load_catalog(tiled_profile: str):
 async def export_run(
     run: CatalogScan,
     *,
-    base_dir: Path,
+    base_dir: Path | None,
     use_xdi: bool = False,
     use_nexus: bool = False,
     rewrite_hdf_links: bool = False,
@@ -198,7 +199,7 @@ async def table_row(run: CatalogScan) -> list[str]:
 
 
 async def export_runs(
-    base_dir: Path,
+    base_dir: Path | None,
     runs: AsyncIterable[CatalogScan],
     use_xdi: bool,
     use_nexus: bool,
@@ -215,6 +216,8 @@ async def export_runs(
     print(tabulate(rows, headers=headers, tablefmt="fancy_outline", showindex=True))
     # Save a table of runs for
     # Do the exporting
+    if base_dir is None:
+        return
     for run in tqdm(valid_runs, desc="Exporting", unit="runs"):
         await export_run(
             run,
@@ -225,8 +228,7 @@ async def export_runs(
         )
 
 
-def main():
-    default_profile = get_default_profile_name()
+def parse_args(argv: Sequence[str]) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="export-runs",
         description="""Export runs from the database as files on disk.
@@ -245,15 +247,18 @@ def main():
         ),
     )
     parser.add_argument(
-        "base_dir", help="The base directory for storing files.", type=str
+        "base_dir", help="The base directory for storing files.", type=str, nargs="?",
+        default=os.environ.get("TILED_EXPORT_BASE_DIR", None),
     )
     parser.add_argument("-v", "--verbose", help="Verbose output", action="store_true")
     parser.add_argument("-q", "--quiet", help="Verbose output", action="store_true")
+    default_profile = get_default_profile_name()
     parser.add_argument(
         "-p",
         "--tiled-profile",
         help="Profile for the Tiled client, or else the default profile will be used. See https://blueskyproject.io/tiled/how-to/profiles.html",
         type=str,
+        required=default_profile is None,
         default=default_profile,
     )
     # Arguments for filtering runs
@@ -293,8 +298,7 @@ def main():
     # Arguments for export formats
     parser.add_argument(
         "--hdf",
-        "--nexus",
-        help="Export files to HDF files with the NeXus schema",
+        help="Export runs to HDF files",
         action="store_true",
     )
     parser.add_argument(
@@ -307,7 +311,17 @@ def main():
         help="Export files to XDI tab-separated value files.",
         action="store_true",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+    # Extra validation
+    needs_base_dir = args.hdf or args.xdi
+    if not args.base_dir and needs_base_dir:
+        parser.error("base_dir is required with --hdf/--xdi")
+    if args.hdf_expand and not args.hdf:
+        warnings.warn("--hdf-expand has no effect without --hdf")
+    return args
+
+def main(argv=None):
+    args = parse_args(argv)
     log_level = logging.DEBUG if args.verbose else logging.WARNING
     if not args.quiet:
         logging.basicConfig(level=log_level)
@@ -330,7 +344,7 @@ def main():
     )
     runs = catalog.runs(queries=qs)
     # Save each run to disk
-    base_dir = Path(args.base_dir)
+    base_dir = Path(args.base_dir) if args.base_dir is not None else None
     do_export = export_runs(
         base_dir=base_dir,
         runs=runs,
