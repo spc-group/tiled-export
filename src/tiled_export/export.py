@@ -12,8 +12,10 @@ from typing import Any
 
 import h5py
 import pandas as pd
+from rich.console import Console
+from rich.table import Table
+from rich.progress import track
 from httpx import HTTPStatusError
-from tabulate import tabulate
 from tiled import queries
 from tiled.profiles import ProfileNotFound, get_default_profile_name, load_profiles
 from tqdm.asyncio import tqdm
@@ -52,7 +54,7 @@ def load_catalog(tiled_profile: str):
 async def export_run(
     run: CatalogScan,
     *,
-    base_dir: Path | None,
+    base_dir: Path,
     use_xdi: bool = False,
     use_nexus: bool = False,
     rewrite_hdf_links: bool = False,
@@ -206,19 +208,25 @@ async def export_runs(
     rewrite_hdf_links: bool = False,
 ):
     valid_runs = []
-    rows = []
     headers = ["#", "UID", "Start", "Status", "Beamline", "Sample", "Scan", "Plan"]
     # Print a table of runs for approval
+    table = Table()
+    for col in headers:
+        table.add_column(col)
     row_num = 0
     async for run in runs:
-        rows.append(await table_row(run))
+        # rows.append(await table_row(run))
+        table.add_row(str(row_num), *(await table_row(run)))
         valid_runs.append(run)
-    print(tabulate(rows, headers=headers, tablefmt="fancy_outline", showindex=True))
+        row_num += 1
+    console = Console()
+    console.print(table)
+    # print(tabulate(rows, headers=headers, tablefmt="fancy_outline", showindex=True))
     # Save a table of runs for
     # Do the exporting
     if base_dir is None:
         return
-    for run in tqdm(valid_runs, desc="Exporting", unit="runs"):
+    for run in track(valid_runs, description="Exporting"):
         await export_run(
             run,
             base_dir=base_dir,
@@ -317,7 +325,7 @@ def parse_args(argv: Sequence[str]) -> argparse.ArgumentParser:
     if not args.base_dir and needs_base_dir:
         parser.error("base_dir is required with --hdf/--xdi")
     if args.hdf_expand and not args.hdf:
-        warnings.warn("--hdf-expand has no effect without --hdf")
+        parser.error("--hdf-expand has no effect without --hdf")
     return args
 
 def main(argv=None):
