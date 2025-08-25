@@ -23,7 +23,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 keywords = []
-dependencies = ["h5py", "tiled[client]", "tqdm", "tabulate", "httpx", "h2", "odfpy"]
+dependencies = ["h5py", "tqdm", "tabulate", "httpx", "h2", "odfpy", "tiled[client] @ git+https://github.com/spc-group/tiled.git@async_client"]
 
 [project.optional-dependencies]
 dev = ["black", "pytest", "flake8", "isort", "mypy", "pytest_httpx", "pytest-asyncio", "build", "twine"]
@@ -56,3 +56,6 @@ dev = { features = ["dev"], solve-group = "default" }
 
 [tool.pixi.feature.dev.tasks]
 test = "pytest -v"
+
+[tool.pixi.feature.dev.dependencies]
+ipython = ">=9.4.0,<10"

@@ -11,16 +11,17 @@ from pathlib import Path
 from typing import Any
 
 import h5py
+from rich.progress import Progress
 import pandas as pd
 from rich.console import Console
 from rich.table import Table
-from rich.progress import track
+from rich.progress import track, Progress
 from httpx import HTTPStatusError
 from tiled import queries
+from tiled.client import from_profile_async
+from tiled.client.container import AsyncContainer
 from tiled.profiles import ProfileNotFound, get_default_profile_name, load_profiles
 from tqdm.asyncio import tqdm
-
-from tiled_export.catalog import Catalog, CatalogScan
 
 NEXUS_MIMETYPE = "application/x-nexus"
 XDI_MIMETYPE = "text/x-xdi"
@@ -40,19 +41,8 @@ class IncompleteRun(ValueError):
     pass
 
 
-def load_catalog(tiled_profile: str):
-    profiles = load_profiles()
-    try:
-        filepath, profile_content = profiles[tiled_profile]
-    except KeyError as err:
-        raise ProfileNotFound(
-            f"Profile {tiled_profile!r} not found. Found profiles {list(profiles)}."
-        ) from err
-    return Catalog(uri=profile_content["uri"])
-
-
 async def export_run(
-    run: CatalogScan,
+    run: AsyncContainer,
     *,
     base_dir: Path,
     use_xdi: bool = False,
@@ -60,7 +50,7 @@ async def export_run(
     rewrite_hdf_links: bool = False,
 ):
     # Decide on export formats
-    valid_formats = await run.formats()
+    valid_formats = run.formats
     target_formats = []
     if use_nexus:
         target_formats.append(NEXUS_MIMETYPE)
@@ -68,14 +58,9 @@ async def export_run(
         target_formats.append(
             XDI_MIMETYPE if XDI_MIMETYPE in valid_formats else TSV_MIMETYPE
         )
-    # Retrieve needed metadata
-    md = await run.metadata
-    start_doc = md.get("start", {})
-    esaf = start_doc.get("esaf_id", "noesaf")
-    pi_name = "nopi"
-    start_time = dt.datetime.fromtimestamp(start_doc.get("time", 0))
     # Decide on how to structure the file storage
-    esaf_dir = base_dir / f"{pi_name}_{start_time.strftime('%Y-%m')}_{esaf}"
+    start_doc = run.metadata.get("start", {})
+    start_time = dt.datetime.fromtimestamp(start_doc.get("time", 0))
     sample_name = start_doc.get("sample_name")
     scan_name = start_doc.get("scan_name")
     plan_name = start_doc.get("plan_name")
@@ -92,10 +77,10 @@ async def export_run(
     base_name = re.sub(r"[ ]", "_", base_name)
     base_name = re.sub(r"[/]", "", base_name)
     # Write to disk
-    esaf_dir.mkdir(parents=True, exist_ok=True)
+    base_dir.mkdir(parents=True, exist_ok=True)
     for fmt in target_formats:
         ext = extensions[fmt]
-        fp = esaf_dir / f"{base_name}{ext}"
+        fp = base_dir / f"{base_name}{ext}"
         if fp.exists():
             continue
         # Export files
@@ -108,7 +93,7 @@ async def export_run(
                 with h5py.File(fp, mode="a") as fd:
                     harden_external_links(fd[start_doc["uid"]])
     # Add an entry to the spreadsheet for this run
-    spreadsheet_path = esaf_dir / "runs_summary.ods"
+    spreadsheet_path = base_dir / "runs_summary.ods"
     if spreadsheet_path.exists():
         df = pd.read_excel(spreadsheet_path, engine="odf")
     else:
@@ -130,7 +115,7 @@ async def export_run(
             start_doc.get("uid", ""),
             start_doc.get("time", ""),
             start_time.isoformat(),
-            md.get("stop", {}).get("exit_status", ""),
+            run.metadata.get("stop", {}).get("exit_status", ""),
             start_doc.get("sample_name", ""),
             start_doc.get("scan_name", ""),
             start_doc.get("plan_name", ""),
@@ -181,11 +166,10 @@ def build_queries(
     for arg, query, key in query_params:
         if arg is not None:
             qs.append(query(key, arg))
-
     return qs
 
 
-async def table_row(run: CatalogScan) -> list[str]:
+async def table_row(run: AsyncContainer) -> list[str]:
     md = await run.metadata
     start_dt = dt.datetime.fromtimestamp(md["start"]["time"])
     start_time = start_dt.strftime("%Y-%m-%d %H:%M:%S")
@@ -200,40 +184,116 @@ async def table_row(run: CatalogScan) -> list[str]:
     ]
 
 
+async def runs_dataframe(runs: AsyncContainer) -> pd.DataFrame:
+    data = {
+        "uid": [],
+        "start_time": [],
+        "status": [],
+        "beamline": [],
+        "sample": [],
+        "scan": [],
+        "plan": [],
+    }
+    async for run in runs:
+        md = await run.metadata
+        data['uid'].append(md['start']['uid'])
+        data['start_time'].append(md['start']['time'])
+        data['status'].append(md['stop']['exit_status'])
+        data['beamline'].append(md['start']['beamline_id'])
+        data['sample'].append(md['start']['sample_name'])
+        data['scan'].append(md['start']['scan_name'])
+        data['plan'].append(md['start']['plan_name'])
+    return pd.DataFrame(data, index="uid")
+
+
 async def export_runs(
     base_dir: Path | None,
-    runs: AsyncIterable[CatalogScan],
+    runs: AsyncContainer,
     use_xdi: bool,
     use_nexus: bool,
     rewrite_hdf_links: bool = False,
 ):
     valid_runs = []
-    headers = ["#", "UID", "Start", "Status", "Beamline", "Sample", "Scan", "Plan"]
     # Print a table of runs for approval
-    table = Table()
-    for col in headers:
-        table.add_column(col)
-    row_num = 0
-    async for run in runs:
-        # rows.append(await table_row(run))
-        table.add_row(str(row_num), *(await table_row(run)))
-        valid_runs.append(run)
-        row_num += 1
-    console = Console()
-    console.print(table)
-    # print(tabulate(rows, headers=headers, tablefmt="fancy_outline", showindex=True))
-    # Save a table of runs for
-    # Do the exporting
-    if base_dir is None:
-        return
-    for run in track(valid_runs, description="Exporting"):
-        await export_run(
-            run,
-            base_dir=base_dir,
-            use_xdi=use_xdi,
-            use_nexus=use_nexus,
-            rewrite_hdf_links=rewrite_hdf_links,
-        )
+    with Progress() as progress:
+        md_task = progress.add_task("Reading metadata…", total=None, start=False)
+        # Build a DataFrame with all the metadata
+        data = {}
+        async for run in runs.values():
+            progress.start_task(md_task)
+            for key, val in parse_metadata(run.metadata).items():
+                data.setdefault(key, []).append(val)
+        df = pd.DataFrame(data)
+        progress.update(md_task, advance=1, total=1)
+        # Build a table of results
+        table = Table()
+        headers = ["#", "UID", "Start", "Status", "Beamline", "Sample", "Scan", "Plan"]
+        for col in headers:
+            table.add_column(col)
+        for idx, row in df.iterrows():
+            row = [idx, row.uid, dt.datetime.fromtimestamp(row.start_time).strftime("%Y-%m-%d %H:%M:%S") , row.exit_status, row.beamline, row.sample_name, row.scan_name, row.plan_name]
+            table.add_row(*[str(item) for item in row])
+        progress.console.print(table)
+        # Build runs metadata into a table
+        df = pd.DataFrame(data)
+        # Do the exporting
+        if base_dir is None:
+            return
+        print(df)
+        for experiment, exp_df in df.groupby("experiment_name"):
+            prog_task = progress.add_task(f"Exporting {experiment}…", total=len(exp_df))
+            for idx, row in exp_df.iterrows():
+                await export_run(
+                    await runs[row.uid],
+                    base_dir=base_dir / experiment,
+                    use_xdi=use_xdi,
+                    use_nexus=use_nexus,
+                    rewrite_hdf_links=rewrite_hdf_links,
+                )
+                progress.update(prog_task, advance=1)
+
+
+def parse_metadata(md):
+    """Load the metadata for *runs* and produce a structure dataframe."""
+    # columns = ["uid", "esaf_id", "start_time", "exit_status", "beamline", "sample_name", "scan_name", "plan_name", "experiment_name", "filename"]
+    uid = md['start']['uid']
+    esaf = md['start'].get('esaf_id')
+    start_time = md['start'].get("time", 0)
+    sample_name = md['start'].get("sample_name")
+    scan_name = md['start'].get("scan_name")
+    plan_name = md['start'].get("plan_name")
+    pi_name = None  # TODO: Extract the PI name
+    start_dt = dt.datetime.fromtimestamp(start_time)
+    experiment = (
+        f"{pi_name if pi_name else 'noPI'}_"
+        f"{start_dt.strftime('%Y-%m')}_"
+        f"{esaf if esaf else 'noesaf'}"
+    )
+    # Decide on how to structure the file storage
+    uid_base = uid.split("-")[0]
+    bits = [
+        start_dt.strftime("%Y%m%d%H%M"),
+        sample_name,
+        scan_name,
+        plan_name,
+        uid_base,
+    ]
+    bits = [bit for bit in bits if bit not in ["", None]]
+    base_name = "-".join(bits)
+    base_name = re.sub(r"[ ]", "_", base_name)
+    base_name = re.sub(r"[/]", "", base_name)
+    return {
+        'uid': uid,
+        'esaf_id': esaf,
+        'start_time': start_time,
+        'exit_status': md['stop'].get('exit_status'),
+        'beamline': md['start'].get('beamline_id'),
+        'sample_name': sample_name,
+        'scan_name': scan_name,
+        'plan_name': plan_name,
+        'experiment_name': experiment,
+        'filename': base_name,
+    }
 
 
 def parse_args(argv: Sequence[str]) -> argparse.ArgumentParser:
@@ -328,13 +388,13 @@ def parse_args(argv: Sequence[str]) -> argparse.ArgumentParser:
         parser.error("--hdf-expand has no effect without --hdf")
     return args
 
-def main(argv=None):
+async def _main(argv=None):
     args = parse_args(argv)
     log_level = logging.DEBUG if args.verbose else logging.WARNING
     if not args.quiet:
         logging.basicConfig(level=log_level)
     # Get the list of runs we need
-    catalog = load_catalog(tiled_profile=args.tiled_profile)
+    catalog = await from_profile_async(args.tiled_profile)
     exit_status = None if args.failed else "success"
     qs = build_queries(
         before=args.before,
@@ -350,17 +410,23 @@ def main(argv=None):
         uid=args.uid,
         exit_status=exit_status,
     )
-    runs = catalog.runs(queries=qs)
+    runs = catalog
+    for query in qs:
+        runs = catalog.search(query)
     # Save each run to disk
     base_dir = Path(args.base_dir) if args.base_dir is not None else None
-    do_export = export_runs(
+    await export_runs(
         base_dir=base_dir,
         runs=runs,
         use_xdi=args.xdi,
         use_nexus=args.hdf,
         rewrite_hdf_links=args.hdf_expand,
     )
-    asyncio.run(do_export)
+
+
+def main(argv=None):
+    return asyncio.run(_main(argv))
+    
 
 
 def external_data_links(

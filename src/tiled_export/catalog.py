@@ -160,7 +160,7 @@ def resolve_uri(uri: str) -> str:
     return new_uri
 
 
-class CatalogScan:
+class CatalogRun:
     """A single scan from the tiled API with some convenience methods.
 
     Parameters
@@ -408,11 +408,11 @@ class Catalog:
             self._client = httpx.AsyncClient(base_url=self.base_uri, http2=True)
         return self._client
 
-    def __getitem__(self, uid) -> CatalogScan:
+    def __getitem__(self, uid) -> CatalogRun:
         # Check that the child exists in this container
         new_path = as_path(self.path_prefix, uid)
         # Create the child scan object
-        scan = CatalogScan(path=new_path, client=self.client)
+        scan = CatalogRun(path=new_path, client=self.client)
         return scan
 
     async def keys(self):
@@ -428,12 +428,24 @@ class Catalog:
             params["sort"] = sort
         return params
 
+    def search(self, query) -> Catalog:
+        """Make a Node with a subset of this Node's entries, filtered by query."""
+        raise NotImplementedError
+
+    def sort(self, *sorting) -> Catalog:
+        """Make a Node with the same entries but sorted according to
+        *sorting*.
+        
+        """
+        raise NotImplementedError
+
+    
     async def runs(
         self,
         queries: Sequence[NoBool] = (),
         sort: Sequence[str] = (),
         batch_size: int = 100,
-    ) -> AsyncGenerator[CatalogScan, Any]:
+    ) -> AsyncGenerator[CatalogRun, Any]:
         """All the scans in the catalog matching the given criteria.
 
         This is a batched iterator that will fetch the next batch of
@@ -447,7 +459,7 @@ class Catalog:
             path=self.path_prefix, params=params, client=self.client
         ):
             md = run.get("attributes", {}).get("metadata")
-            yield CatalogScan(
+            yield CatalogRun(
                 path=as_path(self.path_prefix, run["id"]),
                 metadata=md,
                 client=self.client,
