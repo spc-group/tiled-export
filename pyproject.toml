@@ -41,3 +41,18 @@ profile = "black"
 files = ["src/"]
 follow_imports = "skip"
 follow_untyped_imports = true
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[tool.pixi.pypi-dependencies]
+tiled-export = { path = ".", editable = true }
+
+[tool.pixi.environments]
+default = { solve-group = "default" }
+dev = { features = ["dev"], solve-group = "default" }
+
+[tool.pixi.tasks]
+
+[tool.pixi.feature.dev.tasks]
+test = "pytest -v"
