@@ -184,7 +184,7 @@ async def table_row(run: AsyncContainer) -> list[str]:
 
 
 async def runs_dataframe(runs: AsyncContainer) -> pd.DataFrame:
-    data = {
+    data: dict[str, list[str | int | float]] = {
         "uid": [],
         "start_time": [],
         "status": [],
@@ -212,12 +212,11 @@ async def export_runs(
     use_nexus: bool,
     rewrite_hdf_links: bool = False,
 ):
-    valid_runs = []
     # Print a table of runs for approval
     with Progress() as progress:
         md_task = progress.add_task("Reading metadata…", total=None, start=False)
         # Build a DataFrame with all the metadata
-        data = {}
+        data: dict[str, list[str | int | float]] = {}
         async for run in runs.values():
             progress.start_task(md_task)
             for key, val in parse_metadata(run.metadata).items():
@@ -303,7 +302,7 @@ def parse_metadata(md):
     }
 
 
-def parse_args(argv: Sequence[str]) -> argparse.ArgumentParser:
+def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="export-runs",
         description="""Export runs from the database as files on disk.

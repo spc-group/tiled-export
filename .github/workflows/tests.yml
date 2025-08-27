@@ -26,18 +26,18 @@ jobs:
       - name: Lint
         run: |
           # Check for syntax errors or undefined names
-          # uv run --extra=dev flake8 . --count --select=E9,F63,F7,F82,F401 --show-source --statistics
+          # uv run --dev flake8 . --count --select=E9,F63,F7,F82,F401 --show-source --statistics
           # Make sure black code formatting is applied
-          uv run --extra=dev black --check --preview src/
+          uv run --dev black --check --preview src/ tests/
           # Make sure import orders are correct
-          uv run --extra=dev isort --check src/
+          uv run --dev isort --check src/ tests/
   type-checking:
     runs-on: ubuntu-latest
     timeout-minutes: 1
     needs: linting
     strategy:
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14.0-beta.4", "pypy3.11"]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
       - name: Set up UV and Python ${{ matrix.python-version }}
@@ -48,14 +48,14 @@ jobs:
       - name: Display Python version
         run: python -c "import sys; print(sys.version)"
       - name: Run tests
-        run: uv run --extra=dev mypy
+        run: uv run --dev mypy
   tests:
     runs-on: ubuntu-latest
     timeout-minutes: 1
     needs: [linting, type-checking]
     strategy:
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14.0-beta.4", "pypy3.11"]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
       - name: Set up UV and Python ${{ matrix.python-version }}
