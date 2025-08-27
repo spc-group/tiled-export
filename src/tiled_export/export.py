@@ -239,7 +239,6 @@ async def export_runs(
         # Do the exporting
         if base_dir is None:
             return
-        print(df)
         for experiment, exp_df in df.groupby("experiment_name"):
             prog_task = progress.add_task(f"Exporting {experiment}…", total=len(exp_df))
             for idx, row in exp_df.iterrows():
@@ -286,7 +285,7 @@ def parse_metadata(md):
         'uid': uid,
         'esaf_id': esaf,
         'start_time': start_time,
-        'exit_status': md['stop'].get('exit_status'),
+        'exit_status': md.get('stop', {}).get('exit_status'),
         'beamline': md['start'].get('beamline_id'),
         'sample_name': sample_name,
         'scan_name': scan_name,
@@ -412,7 +411,7 @@ async def _main(argv=None):
     )
     runs = catalog
     for query in qs:
-        runs = catalog.search(query)
+        runs = runs.search(query)
     # Save each run to disk
     base_dir = Path(args.base_dir) if args.base_dir is not None else None
     await export_runs(
