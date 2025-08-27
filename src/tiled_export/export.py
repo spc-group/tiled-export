@@ -1,8 +1,8 @@
-import os
 import argparse
 import asyncio
 import datetime as dt
 import logging
+import os
 import re
 import textwrap
 from collections.abc import AsyncIterable, Generator, Sequence
@@ -11,12 +11,11 @@ from pathlib import Path
 from typing import Any
 
 import h5py
-from rich.progress import Progress
 import pandas as pd
-from rich.console import Console
-from rich.table import Table
-from rich.progress import track, Progress
 from httpx import HTTPStatusError
+from rich.console import Console
+from rich.progress import Progress, track
+from rich.table import Table
 from tiled import queries
 from tiled.client import from_profile_async
 from tiled.client.container import AsyncContainer
@@ -196,13 +195,13 @@ async def runs_dataframe(runs: AsyncContainer) -> pd.DataFrame:
     }
     async for run in runs:
         md = await run.metadata
-        data['uid'].append(md['start']['uid'])
-        data['start_time'].append(md['start']['time'])
-        data['status'].append(md['stop']['exit_status'])
-        data['beamline'].append(md['start']['beamline_id'])
-        data['sample'].append(md['start']['sample_name'])
-        data['scan'].append(md['start']['scan_name'])
-        data['plan'].append(md['start']['plan_name'])
+        data["uid"].append(md["start"]["uid"])
+        data["start_time"].append(md["start"]["time"])
+        data["status"].append(md["stop"]["exit_status"])
+        data["beamline"].append(md["start"]["beamline_id"])
+        data["sample"].append(md["start"]["sample_name"])
+        data["scan"].append(md["start"]["scan_name"])
+        data["plan"].append(md["start"]["plan_name"])
     return pd.DataFrame(data, index="uid")
 
 
@@ -231,7 +230,16 @@ async def export_runs(
         for col in headers:
             table.add_column(col)
         for idx, row in df.iterrows():
-            row = [idx, row.uid, dt.datetime.fromtimestamp(row.start_time).strftime("%Y-%m-%d %H:%M:%S") , row.exit_status, row.beamline, row.sample_name, row.scan_name, row.plan_name]
+            row = [
+                idx,
+                row.uid,
+                dt.datetime.fromtimestamp(row.start_time).strftime("%Y-%m-%d %H:%M:%S"),
+                row.exit_status,
+                row.beamline,
+                row.sample_name,
+                row.scan_name,
+                row.plan_name,
+            ]
             table.add_row(*[str(item) for item in row])
         progress.console.print(table)
         # Build runs metadata into a table
@@ -255,12 +263,12 @@ async def export_runs(
 def parse_metadata(md):
     """Load the metadata for *runs* and produce a structure dataframe."""
     # columns = ["uid", "esaf_id", "start_time", "exit_status", "beamline", "sample_name", "scan_name", "plan_name", "experiment_name", "filename"]
-    uid = md['start']['uid']
-    esaf = md['start'].get('esaf_id')
-    start_time = md['start'].get("time", 0)
-    sample_name = md['start'].get("sample_name")
-    scan_name = md['start'].get("scan_name")
-    plan_name = md['start'].get("plan_name")
+    uid = md["start"]["uid"]
+    esaf = md["start"].get("esaf_id")
+    start_time = md["start"].get("time", 0)
+    sample_name = md["start"].get("sample_name")
+    scan_name = md["start"].get("scan_name")
+    plan_name = md["start"].get("plan_name")
     pi_name = None  # TODO: Extract the PI name
     start_dt = dt.datetime.fromtimestamp(start_time)
     experiment = (
@@ -282,16 +290,16 @@ def parse_metadata(md):
     base_name = re.sub(r"[ ]", "_", base_name)
     base_name = re.sub(r"[/]", "", base_name)
     return {
-        'uid': uid,
-        'esaf_id': esaf,
-        'start_time': start_time,
-        'exit_status': md.get('stop', {}).get('exit_status'),
-        'beamline': md['start'].get('beamline_id'),
-        'sample_name': sample_name,
-        'scan_name': scan_name,
-        'plan_name': plan_name,
-        'experiment_name': experiment,
-        'filename': base_name,
+        "uid": uid,
+        "esaf_id": esaf,
+        "start_time": start_time,
+        "exit_status": md.get("stop", {}).get("exit_status"),
+        "beamline": md["start"].get("beamline_id"),
+        "sample_name": sample_name,
+        "scan_name": scan_name,
+        "plan_name": plan_name,
+        "experiment_name": experiment,
+        "filename": base_name,
     }
 
 
@@ -314,7 +322,10 @@ def parse_args(argv: Sequence[str]) -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
-        "base_dir", help="The base directory for storing files.", type=str, nargs="?",
+        "base_dir",
+        help="The base directory for storing files.",
+        type=str,
+        nargs="?",
         default=os.environ.get("TILED_EXPORT_BASE_DIR", None),
     )
     parser.add_argument("-v", "--verbose", help="Verbose output", action="store_true")
@@ -387,6 +398,7 @@ def parse_args(argv: Sequence[str]) -> argparse.ArgumentParser:
         parser.error("--hdf-expand has no effect without --hdf")
     return args
 
+
 async def _main(argv=None):
     args = parse_args(argv)
     log_level = logging.DEBUG if args.verbose else logging.WARNING
@@ -425,7 +437,6 @@ async def _main(argv=None):
 
 def main(argv=None):
     return asyncio.run(_main(argv))
-    
 
 
 def external_data_links(
