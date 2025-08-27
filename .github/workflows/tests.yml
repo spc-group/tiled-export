@@ -23,14 +23,12 @@ jobs:
       # You can test your matrix by printing the current Python version
       - name: Display Python version
         run: python -c "import sys; print(sys.version)"
-      - name: Lint
-        run: |
-          # Check for syntax errors or undefined names
-          # uv run --dev flake8 . --count --select=E9,F63,F7,F82,F401 --show-source --statistics
-          # Make sure black code formatting is applied
-          uv run --dev black --check --preview src/ tests/
-          # Make sure import orders are correct
-          uv run --dev isort --check src/ tests/
+      - name: Ruff linting
+        run: uv run --dev ruff check src/ tests/
+      - name: Enforce formatting standards
+        run: uv run --dev black --check --preview src/ tests/
+      - name: Enforce import sorting
+        run: uv run --dev isort --check src/ tests/
   type-checking:
     runs-on: ubuntu-latest
     timeout-minutes: 1

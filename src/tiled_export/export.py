@@ -5,7 +5,7 @@ import logging
 import os
 import re
 import textwrap
-from collections.abc import AsyncIterable, Generator, Sequence
+from collections.abc import Generator, Sequence
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -13,14 +13,12 @@ from typing import Any
 import h5py
 import pandas as pd
 from httpx import HTTPStatusError
-from rich.console import Console
-from rich.progress import Progress, track
+from rich.progress import Progress
 from rich.table import Table
 from tiled import queries
 from tiled.client import from_profile_async
 from tiled.client.container import AsyncContainer
-from tiled.profiles import ProfileNotFound, get_default_profile_name, load_profiles
-from tqdm.asyncio import tqdm
+from tiled.profiles import get_default_profile_name
 
 NEXUS_MIMETYPE = "application/x-nexus"
 XDI_MIMETYPE = "text/x-xdi"
