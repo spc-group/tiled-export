@@ -8,7 +8,7 @@ import textwrap
 from collections.abc import Generator, Sequence
 from functools import partial
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 import h5py
 import pandas as pd
@@ -89,36 +89,6 @@ async def export_run(
             if fmt == NEXUS_MIMETYPE and rewrite_hdf_links:
                 with h5py.File(fp, mode="a") as fd:
                     harden_external_links(fd[start_doc["uid"]])
-    # Add an entry to the spreadsheet for this run
-    spreadsheet_path = base_dir / "runs_summary.ods"
-    if spreadsheet_path.exists():
-        df = pd.read_excel(spreadsheet_path, engine="odf")
-    else:
-        df = pd.DataFrame(
-            columns=[
-                "uid",
-                "start_timestamp",
-                "start_datetime",
-                "exit_status",
-                "sample",
-                "scan",
-                "plan",
-                "filebase",
-            ]
-        )
-    if start_doc.get("uid") not in df.uid.values:
-        # Add the row to the spreadsheet
-        df.loc[len(df)] = [
-            start_doc.get("uid", ""),
-            start_doc.get("time", ""),
-            start_time.isoformat(),
-            run.metadata.get("stop", {}).get("exit_status", ""),
-            start_doc.get("sample_name", ""),
-            start_doc.get("scan_name", ""),
-            start_doc.get("plan_name", ""),
-            base_name,
-        ]
-        df.to_excel(spreadsheet_path, engine="odf", index=False)
 
 
 def build_queries(
@@ -181,28 +151,6 @@ async def table_row(run: AsyncContainer) -> list[str]:
     ]
 
 
-async def runs_dataframe(runs: AsyncContainer) -> pd.DataFrame:
-    data: dict[str, list[str | int | float]] = {
-        "uid": [],
-        "start_time": [],
-        "status": [],
-        "beamline": [],
-        "sample": [],
-        "scan": [],
-        "plan": [],
-    }
-    async for run in runs:
-        md = await run.metadata
-        data["uid"].append(md["start"]["uid"])
-        data["start_time"].append(md["start"]["time"])
-        data["status"].append(md["stop"]["exit_status"])
-        data["beamline"].append(md["start"]["beamline_id"])
-        data["sample"].append(md["start"]["sample_name"])
-        data["scan"].append(md["start"]["scan_name"])
-        data["plan"].append(md["start"]["plan_name"])
-    return pd.DataFrame(data, index="uid")
-
-
 async def export_runs(
     base_dir: Path | None,
     runs: AsyncContainer,
@@ -255,6 +203,31 @@ async def export_runs(
                     rewrite_hdf_links=rewrite_hdf_links,
                 )
                 progress.update(prog_task, advance=1)
+            # Prepare summary documents
+            excel_file = base_dir / experiment / "runs_summary.ods"
+            with open(excel_file, mode="ab") as excel_fd:
+                update_summary_spreadsheet(runs=exp_df, fd=excel_file)
+
+
+def _buffer_size(buff: BinaryIO) -> int:
+    current = buff.tell()
+    buff.seek(0, os.SEEK_END)
+    size = buff.tell()
+    buff.seek(current)
+    return size
+
+
+def update_summary_spreadsheet(runs: pd.DataFrame, fd: BinaryIO):
+    """Write a summary of the runs as a spreadsheet into *fd*."""
+    dataframes = [runs]
+    if _buffer_size(fd) > 0:
+        # We need to merge the existing and new dataframes
+        existing_df = pd.read_excel(fd, engine="odf", index_col="uid")
+        dataframes.append(existing_df)
+    # Write to disk (or whatever *fd* is)
+    new_df = pd.concat(dataframes)
+    new_df = new_df.sort_values("start_time")
+    new_df.to_excel(fd, engine="odf", index=True, index_label="uid")
 
 
 def parse_metadata(md):

@@ -22,7 +22,7 @@ keywords = []
 dependencies = ["h5py", "tqdm", "tabulate", "httpx", "h2", "odfpy", "tiled[client] @ https://github.com/spc-group/tiled/releases/download/v2025-08-1/tiled-0.1.0b33.dev27+g2c387153f-py3-none-any.whl"]
 
 [dependency-groups]
-dev = ["black", "pytest", "ruff", "isort", "mypy", "pytest_httpx", "pytest-asyncio", "build", "twine"]
+dev = ["black", "pytest", "ruff", "isort", "mypy", "pytest_httpx", "pytest-asyncio", "build", "twine", "ipython"]
 
 [project.urls]
 Homepage = "https://github.com/spc-group/tiled-export"
