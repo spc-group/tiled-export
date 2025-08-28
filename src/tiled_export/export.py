@@ -8,7 +8,7 @@ import textwrap
 from collections.abc import Generator, Sequence
 from functools import partial
 from pathlib import Path
-from typing import Any, BinaryIO
+from typing import Any
 
 import h5py
 import pandas as pd
@@ -19,6 +19,8 @@ from tiled import queries
 from tiled.client import from_profile_async
 from tiled.client.container import AsyncContainer
 from tiled.profiles import get_default_profile_name
+
+from tiled_export.spreadsheets import update_summary_spreadsheet
 
 NEXUS_MIMETYPE = "application/x-nexus"
 XDI_MIMETYPE = "text/x-xdi"
@@ -207,27 +209,6 @@ async def export_runs(
             excel_file = base_dir / experiment / "runs_summary.ods"
             with open(excel_file, mode="ab") as excel_fd:
                 update_summary_spreadsheet(runs=exp_df, fd=excel_file)
-
-
-def _buffer_size(buff: BinaryIO) -> int:
-    current = buff.tell()
-    buff.seek(0, os.SEEK_END)
-    size = buff.tell()
-    buff.seek(current)
-    return size
-
-
-def update_summary_spreadsheet(runs: pd.DataFrame, fd: BinaryIO):
-    """Write a summary of the runs as a spreadsheet into *fd*."""
-    dataframes = [runs]
-    if _buffer_size(fd) > 0:
-        # We need to merge the existing and new dataframes
-        existing_df = pd.read_excel(fd, engine="odf", index_col="uid")
-        dataframes.append(existing_df)
-    # Write to disk (or whatever *fd* is)
-    new_df = pd.concat(dataframes)
-    new_df = new_df.sort_values("start_time")
-    new_df.to_excel(fd, engine="odf", index=True, index_label="uid")
 
 
 def parse_metadata(md):
