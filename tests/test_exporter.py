@@ -32,8 +32,7 @@ def test_build_quries_with_filters():
 @pytest.mark.asyncio
 async def test_export_run():
     run = mock.AsyncMock()
-    metadata = mock.AsyncMock(return_value={"start": {}})()
-    run.metadata = metadata
+    run.metadata = {"start": {}}
     with TemporaryDirectory() as tmp_dir:
         base_dir = Path(tmp_dir)
         await export_run(run, base_dir=base_dir, use_xdi=True)
