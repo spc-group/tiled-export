@@ -1833,8 +1833,8 @@ wheels = [
 
 [[package]]
 name = "tiled"
-version = "0.1.0b33.dev27+g2c387153f"
-source = { url = "https://github.com/spc-group/tiled/releases/download/v2025-08-1/tiled-0.1.0b33.dev27+g2c387153f-py3-none-any.whl" }
+version = "0.1.0b37.dev7+g52f22d8cb"
+source = { url = "https://github.com/spc-group/tiled/releases/download/v0.1.0b36/tiled-0.1.0b37.dev7+g52f22d8cb-py3-none-any.whl" }
 dependencies = [
     { name = "httpx" },
     { name = "json-merge-patch" },
@@ -1849,7 +1849,7 @@ dependencies = [
     { name = "typer" },
 ]
 wheels = [
-    { url = "https://github.com/spc-group/tiled/releases/download/v2025-08-1/tiled-0.1.0b33.dev27+g2c387153f-py3-none-any.whl", hash = "sha256:b0856474fdcea8a42e593b534bf3c8609e0beacf0600322e5c7a20311fe2ca37" },
+    { url = "https://github.com/spc-group/tiled/releases/download/v0.1.0b36/tiled-0.1.0b37.dev7+g52f22d8cb-py3-none-any.whl", hash = "sha256:c885f467dda2fc64b9155d4fc4689eabf7dace11b30e036e6bc54cad733e3780" },
 ]
 
 [package.optional-dependencies]
@@ -1860,6 +1860,7 @@ client = [
     { name = "entrypoints" },
     { name = "lz4" },
     { name = "ndindex" },
+    { name = "numba" },
     { name = "numpy" },
     { name = "pandas" },
     { name = "pyarrow" },
@@ -1969,6 +1970,10 @@ requires-dist = [
     { name = "ndindex", marker = "extra == 'client'" },
     { name = "ndindex", marker = "extra == 'server'" },
     { name = "ndindex", marker = "extra == 'sparse'" },
+    { name = "numba", marker = "extra == 'all'", specifier = ">=0.59.0" },
+    { name = "numba", marker = "extra == 'client'", specifier = ">=0.59.0" },
+    { name = "numba", marker = "extra == 'server'", specifier = ">=0.59.0" },
+    { name = "numba", marker = "extra == 'sparse'", specifier = ">=0.59.0" },
     { name = "numcodecs", marker = "extra == 'all'" },
     { name = "numcodecs", marker = "extra == 'minimal-server'" },
     { name = "numcodecs", marker = "extra == 'server'" },
@@ -1997,15 +2002,15 @@ requires-dist = [
     { name = "prometheus-client", marker = "extra == 'all'" },
     { name = "prometheus-client", marker = "extra == 'minimal-server'" },
     { name = "prometheus-client", marker = "extra == 'server'" },
-    { name = "pyarrow", marker = "extra == 'all'" },
-    { name = "pyarrow", marker = "extra == 'client'" },
-    { name = "pyarrow", marker = "extra == 'dataframe'" },
-    { name = "pyarrow", marker = "extra == 'server'" },
-    { name = "pyarrow", marker = "extra == 'sparse'" },
+    { name = "pyarrow", marker = "extra == 'all'", specifier = ">=14.0.1" },
+    { name = "pyarrow", marker = "extra == 'client'", specifier = ">=14.0.1" },
+    { name = "pyarrow", marker = "extra == 'dataframe'", specifier = ">=14.0.1" },
+    { name = "pyarrow", marker = "extra == 'server'", specifier = ">=14.0.1" },
+    { name = "pyarrow", marker = "extra == 'sparse'", specifier = ">=14.0.1" },
     { name = "pyarrow", marker = "extra == 'xarray'" },
     { name = "pydantic", specifier = ">=2,<3" },
     { name = "pydantic-settings", specifier = ">=2,<3" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = "<8" },
+    { name = "pytest", marker = "extra == 'dev'" },
     { name = "pytest-asyncio", marker = "extra == 'dev'" },
     { name = "pytest-mock", marker = "extra == 'dev'" },
     { name = "pytest-rerunfailures", marker = "extra == 'dev'" },
@@ -2022,10 +2027,10 @@ requires-dist = [
     { name = "rich", marker = "extra == 'all'" },
     { name = "rich", marker = "extra == 'client'" },
     { name = "rich", marker = "extra == 'minimal-client'" },
-    { name = "sparse", marker = "extra == 'all'" },
-    { name = "sparse", marker = "extra == 'client'" },
-    { name = "sparse", marker = "extra == 'server'" },
-    { name = "sparse", marker = "extra == 'sparse'" },
+    { name = "sparse", marker = "extra == 'all'", specifier = ">=0.15.5" },
+    { name = "sparse", marker = "extra == 'client'", specifier = ">=0.15.5" },
+    { name = "sparse", marker = "extra == 'server'", specifier = ">=0.15.5" },
+    { name = "sparse", marker = "extra == 'sparse'", specifier = ">=0.15.5" },
     { name = "sphinx", marker = "extra == 'dev'", specifier = "!=4.1.0,!=4.1.1,!=4.1.2,!=4.2.0" },
     { name = "sphinx-click", marker = "extra == 'dev'" },
     { name = "sphinx-copybutton", marker = "extra == 'dev'" },
@@ -2066,7 +2071,7 @@ provides-extras = ["all", "array", "client", "compression", "dataframe", "dev", 
 
 [[package]]
 name = "tiled-export"
-version = "0.3"
+version = "0.4.0"
 source = { editable = "." }
 dependencies = [
     { name = "h2" },
@@ -2099,7 +2104,7 @@ requires-dist = [
     { name = "httpx" },
     { name = "odfpy" },
     { name = "tabulate" },
-    { name = "tiled", extras = ["client"], url = "https://github.com/spc-group/tiled/releases/download/v2025-08-1/tiled-0.1.0b33.dev27+g2c387153f-py3-none-any.whl" },
+    { name = "tiled", extras = ["client"], url = "https://github.com/spc-group/tiled/releases/download/v0.1.0b36/tiled-0.1.0b37.dev7+g52f22d8cb-py3-none-any.whl" },
     { name = "tqdm" },
 ]
 
