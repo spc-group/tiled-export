@@ -208,7 +208,7 @@ async def export_runs(
             # Prepare summary documents
             excel_file = base_dir / experiment / "runs_summary.ods"
             with open(excel_file, mode="ab") as excel_fd:
-                update_summary_spreadsheet(runs=exp_df, fd=excel_file)
+                update_summary_spreadsheet(runs=exp_df, fd=excel_fd)
 
 
 def parse_metadata(md):
