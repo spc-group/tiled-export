@@ -192,7 +192,8 @@ async def export_runs(
         # Build runs metadata into a table
         df = pd.DataFrame(data)
         # Do the exporting
-        if base_dir is None:
+        if base_dir is None or len(df) == 0:
+            # Nothing to export
             return
         for experiment, exp_df in df.groupby("experiment_name"):
             prog_task = progress.add_task(f"Exporting {experiment}…", total=len(exp_df))
