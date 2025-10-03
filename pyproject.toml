@@ -19,7 +19,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 keywords = []
-dependencies = ["h5py", "tqdm", "tabulate", "httpx", "h2", "odfpy", "tiled[client] @ https://github.com/spc-group/tiled/releases/download/v0.1.0b36/tiled-0.1.0b37.dev7+g52f22d8cb-py3-none-any.whl"]
+dependencies = ["h5py", "tqdm", "tabulate", "httpx", "h2", "odfpy", "tiled[client] @ git+https://github.com/spc-group/tiled.git@async_client"]
 
 [dependency-groups]
 dev = ["black", "pytest", "ruff", "isort", "mypy", "pytest_httpx", "pytest-asyncio", "build", "twine", "ipython"]
