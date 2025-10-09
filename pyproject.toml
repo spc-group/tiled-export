@@ -25,6 +25,7 @@ dependencies = [
     "tabulate",
     "httpx",
     "h2",
+    "openpyxl",
     "odfpy",
     "tiled[client] @ git+https://github.com/spc-group/tiled.git@async_client",
 ]

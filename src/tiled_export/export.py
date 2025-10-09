@@ -189,8 +189,6 @@ async def export_runs(
             ]
             table.add_row(*[str(item) for item in row])
         progress.console.print(table)
-        # Build runs metadata into a table
-        df = pd.DataFrame(data)
         # Do the exporting
         if base_dir is None or len(df) == 0:
             # Nothing to export
@@ -208,8 +206,10 @@ async def export_runs(
                 progress.update(prog_task, advance=1)
             # Prepare summary documents
             excel_file = base_dir / experiment / "runs_summary.ods"
-            with open(excel_file, mode="ab") as excel_fd:
-                update_summary_spreadsheet(runs=exp_df, fd=excel_fd)
+            # update_summary_spreadsheet(runs=exp_df, fd=excel_file)
+            # with pd.ExcelWriter(excel_file, mode="a", if_sheet_exists="replace") as writer:
+            #     update_summary_spreadsheet(runs=exp_df, writer=writer)
+            update_summary_spreadsheet(runs=exp_df, fp=excel_file)
 
 
 def parse_metadata(md):

@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from typing import BinaryIO
 
 import pandas as pd
@@ -12,14 +13,18 @@ def _buffer_size(buff: BinaryIO) -> int:
     return size
 
 
-def update_summary_spreadsheet(runs: pd.DataFrame, fd: BinaryIO):
+def update_summary_spreadsheet(runs: pd.DataFrame, fp: Path):
     """Write a summary of the runs as a spreadsheet into *fd*."""
-    dataframes = [runs]
-    if _buffer_size(fd) > 0:
-        # We need to merge the existing and new dataframes
-        existing_df = pd.read_excel(fd, engine="odf", index_col="uid")
-        dataframes.append(existing_df)
-    # Write to disk (or whatever *fd* is)
-    new_df = pd.concat(dataframes)
-    new_df = new_df.sort_values("start_time")
-    new_df.to_excel(fd, engine="odf", index=True, index_label="uid")
+    engine = "odf"
+    # Ideally we could read previous sheets, but excel has no typing system
+    # try:
+    #     # We need to merge the existing and new dataframes
+    #     existing_df = pd.read_excel(fp, engine=engine)
+    #     print(f"{existing_df.esaf_id.dtype=}")
+    # except FileNotFoundError:
+    #     pass
+    # else:
+    #     runs = runs.set_index('uid').merge(existing_df.set_index('uid'))
+    # Write to disk (or whatever *fp* is)
+    runs = runs.sort_values("start_time")
+    runs.to_excel(fp, engine=engine, index=False)
