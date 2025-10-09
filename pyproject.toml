@@ -27,6 +27,7 @@ dependencies = [
     "h2",
     "openpyxl",
     "odfpy",
+    "pyarrow",
     "tiled[client] @ git+https://github.com/spc-group/tiled.git@async_client",
 ]
 

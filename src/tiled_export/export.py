@@ -20,7 +20,7 @@ from tiled.client import from_profile_async
 from tiled.client.container import AsyncContainer
 from tiled.profiles import get_default_profile_name
 
-from tiled_export.spreadsheets import update_summary_spreadsheet
+from tiled_export.serializers import update_summary_files
 
 NEXUS_MIMETYPE = "application/x-nexus"
 XDI_MIMETYPE = "text/x-xdi"
@@ -205,11 +205,8 @@ async def export_runs(
                 )
                 progress.update(prog_task, advance=1)
             # Prepare summary documents
-            excel_file = base_dir / experiment / "runs_summary.ods"
-            # update_summary_spreadsheet(runs=exp_df, fd=excel_file)
-            # with pd.ExcelWriter(excel_file, mode="a", if_sheet_exists="replace") as writer:
-            #     update_summary_spreadsheet(runs=exp_df, writer=writer)
-            update_summary_spreadsheet(runs=exp_df, fp=excel_file)
+            parquet_file = base_dir / experiment / "runs_summary.parquet"
+            update_summary_files(runs=exp_df, parquet_file=parquet_file)
 
 
 def parse_metadata(md):

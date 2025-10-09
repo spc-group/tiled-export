@@ -1,9 +1,7 @@
-import io
-
 import pandas as pd
 import pytest
 
-from tiled_export.spreadsheets import update_summary_spreadsheet
+from tiled_export.serializers import update_summary_files
 
 
 @pytest.fixture()
@@ -33,21 +31,34 @@ def runs_df():
     return df
 
 
-def test_write_new_spreadsheet(runs_df, tmp_path):
+def test_write_new_summary(runs_df, tmp_path):
     """Can we write a new summary-of-runs spreadsheet?"""
-    fp = tmp_path / "spreadsheet.ods"
-    update_summary_spreadsheet(runs=runs_df, fp=fp)
-    new_df = pd.read_excel(fp, engine="odf")
+    fp = tmp_path / "spreadsheet.parquet"
+    excel_fp = tmp_path / "spreadsheet.ods"
+    update_summary_files(runs=runs_df, parquet_file=fp)
+    # Check the parquet file
+    new_df = pd.read_parquet(fp)
+    pd.testing.assert_frame_equal(new_df, runs_df)
+    # Check the spreadsheet
+    new_df = pd.read_excel(excel_fp)
     pd.testing.assert_frame_equal(new_df, runs_df)
 
 
-@pytest.mark.skip(reason="appending spreadsheets is broken, excel's typing is bad")
-def test_update_existing_spreadsheet(runs_df):
+def test_update_existing_summary(runs_df, tmp_path):
     """Can we write a new summary-of-runs spreadsheet?"""
-    output = io.BytesIO()
+    fp = tmp_path / "spreadsheet.parquet"
     # Make sure we can do it in steps, too
-    update_summary_spreadsheet(runs=runs_df.iloc[:1], fd=output)
-    update_summary_spreadsheet(runs=runs_df.iloc[1:], fd=output)
-    new_df = pd.read_excel(output, engine="odf")
-    new_df.set_index("uid", inplace=True, drop=True)
+    update_summary_files(runs=runs_df.iloc[:1], parquet_file=fp)
+    update_summary_files(runs=runs_df.iloc[1:], parquet_file=fp)
+    new_df = pd.read_parquet(fp)
+    pd.testing.assert_frame_equal(new_df, runs_df)
+
+
+def test_update_existing_summary_duplicates(runs_df, tmp_path):
+    """Can we write a new summary-of-runs spreadsheet?"""
+    fp = tmp_path / "spreadsheet.parquet"
+    # Make sure we can do it in steps, too
+    update_summary_files(runs=runs_df, parquet_file=fp)
+    update_summary_files(runs=runs_df, parquet_file=fp)
+    new_df = pd.read_parquet(fp)
     pd.testing.assert_frame_equal(new_df, runs_df)
