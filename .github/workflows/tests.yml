@@ -64,4 +64,4 @@ jobs:
       - name: Display Python version
         run: python -c "import sys; print(sys.version)"
       - name: Run tests
-        run: uv run --dev pytest
+        run: uv run --dev pytest -Werror

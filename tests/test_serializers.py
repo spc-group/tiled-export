@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -41,6 +42,8 @@ def test_write_new_summary(runs_df, tmp_path):
     pd.testing.assert_frame_equal(new_df, runs_df)
     # Check the spreadsheet
     new_df = pd.read_excel(excel_fp)
+    # Excel doesn't have None, so we need NaN for comparison
+    runs_df = runs_df.fillna(np.nan)
     pd.testing.assert_frame_equal(new_df, runs_df)
 
 
