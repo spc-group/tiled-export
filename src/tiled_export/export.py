@@ -21,6 +21,8 @@ from tiled.client.container import AsyncContainer
 from tiled.profiles import get_default_profile_name
 
 from tiled_export.experiment import prepare_experiment
+from tiled_export.notebook import add_run as add_run_to_notebook
+from tiled_export.notebook import execute_notebook
 from tiled_export.serializers import update_summary_files
 
 NEXUS_MIMETYPE = "application/x-nexus"
@@ -158,6 +160,7 @@ async def export_runs(
     runs: AsyncContainer,
     use_xdi: bool,
     use_nexus: bool,
+    to_jupyter: bool = False,
     rewrite_hdf_links: bool = False,
 ):
     # Print a table of runs for approval
@@ -196,19 +199,26 @@ async def export_runs(
         for experiment, exp_df in df.groupby("experiment_name"):
             prog_task = progress.add_task(f"Exporting {experiment}…", total=len(exp_df))
             experiment_dir = base_dir / experiment
-            await prepare_experiment(experiment_dir)
+            exp = await prepare_experiment(experiment_dir)
             for idx, row in exp_df.iterrows():
+                run = await runs[row.uid]
                 await export_run(
-                    await runs[row.uid],
+                    run,
                     base_dir=experiment_dir,
                     use_xdi=use_xdi,
                     use_nexus=use_nexus,
                     rewrite_hdf_links=rewrite_hdf_links,
                 )
+                # Update the experiment's jupyter notebook
+                if to_jupyter:
+                    await add_run_to_notebook(run=run, notebook=experiment.notebook)
                 progress.update(prog_task, advance=1)
             # Prepare summary documents
             parquet_file = base_dir / experiment / "runs_summary.parquet"
             update_summary_files(runs=exp_df, parquet_file=parquet_file)
+            # Make sure the notebook has fresh plots, etc
+            if to_jupyter:
+                await execute_notebook(experiment.notebook)
 
 
 def parse_metadata(md):
@@ -340,6 +350,12 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         help="Export files to XDI tab-separated value files.",
         action="store_true",
     )
+    parser.add_argument(
+        "--jupyter",
+        "-J",
+        help="Create and modify a jupyter notebook with analysis and results.",
+        action="store_true",
+    )
     args = parser.parse_args(argv)
     # Extra validation
     needs_base_dir = args.hdf or args.xdi
@@ -382,6 +398,7 @@ async def _main(argv=None):
         runs=runs,
         use_xdi=args.xdi,
         use_nexus=args.hdf,
+        to_jupyter=args.jupyter,
         rewrite_hdf_links=args.hdf_expand,
     )
 

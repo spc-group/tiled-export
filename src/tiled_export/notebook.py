@@ -1,3 +1,5 @@
+import asyncio
+import shutil
 import uuid
 from collections.abc import Mapping
 from copy import deepcopy
@@ -12,6 +14,10 @@ from tiled.client.container import AsyncContainer
 
 def role(cell: NotebookNode) -> str | None:
     return cell.metadata.get("tiled_export", {}).get("role")
+
+
+def cell_uid(cell) -> str | None:
+    return cell.metadata.get("tiled_export", {}).get("run", {}).get("uid")
 
 
 def prepare_notebook(notebook: str | Path) -> None:
@@ -53,13 +59,37 @@ def render_template_cell(
     return new_cell
 
 
-async def add_run(run: AsyncContainer, notebook: str | Path) -> None:
+async def add_run(
+    run: AsyncContainer,
+    notebook: Path,
+    xdi_file: Path | None = None,
+    hdf_file: Path | None = None,
+) -> None:
     """Add cells to a *notebook* for analysing a bluesky *run*."""
-    run = {"metadata": run.metadata}
     nb = nbformat.read(notebook, as_version=4)
+    # Check if cells have already been rendered for this run.
+    existing_cells = [
+        cell for cell in nb.cells if cell_uid(cell) == run.metadata["start"]["uid"]
+    ]
+    if len(existing_cells) > 0:
+        return
+    # Parse cell templates
+    run = {"metadata": run.metadata}
+    if xdi_file is not None:
+        run["xdi_file"] = str(xdi_file.relative_to(notebook.parent))
+    if hdf_file is not None:
+        run["hdf_file"] = str(hdf_file.relative_to(notebook.parent))
     template_cells = [cell for cell in nb.cells if role(cell) == "run_template"]
     run_cells = [
         render_template_cell(cell, values={"run": run}) for cell in template_cells
     ]
+    # Add cells to notebook
     nb.cells.extend(run_cells)
     nbformat.write(nb, notebook)
+
+
+async def execute_notebook(notebook: Path) -> None:
+    """Execute the python cells in the jupyter notebook."""
+    cmd = " ".join([shutil.which("pixi"), "run", "jupyter", "execute", str(notebook)])
+    proc = await asyncio.create_subprocess_exec(cmd, cwd=notebook.parent)
+    await proc.wait()
