@@ -29,10 +29,23 @@ dependencies = [
     "odfpy",
     "pyarrow",
     "tiled[client] @ git+https://github.com/spc-group/tiled.git@async_client",
+    "nbformat",
 ]
 
 [dependency-groups]
-dev = ["black", "pytest", "ruff", "isort", "mypy", "pytest_httpx", "pytest-asyncio", "build", "twine", "ipython"]
+dev = [
+    "black",
+    "pytest",
+    "ruff",
+    "isort",
+    "mypy",
+    "pytest_httpx",
+    "pytest-asyncio",
+    "pytest-mock",
+    "build",
+    "twine",
+    "ipython"
+]
 
 [project.urls]
 Homepage = "https://github.com/spc-group/tiled-export"

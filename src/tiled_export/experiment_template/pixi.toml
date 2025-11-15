@@ -1,0 +1,25 @@
+[workspace]
+authors = ["Mark Wolfman <canismarko@gmail.com>"]
+channels = ["conda-forge"]
+name = "templates"
+platforms = ["linux-64"]
+version = "0.1.0"
+
+[tasks]
+
+[dependencies]
+matplotlib = ">=3.10.8,<4"
+numpy = ">=1.26.4,<2"
+xraylarch = ">=2025.2.2,<2026"
+h5py = ">=3.15.1,<4"
+hdf5plugin = ">=6.0.0,<7"
+tiled = ">=0.2.1,<0.3"
+pandas = ">=2.3.3,<3"
+scipy = ">=1.16.3,<2"
+xraydb = ">=4.5.8,<5"
+jupyter = ">=1.1.1,<2"
+pixi-kernel = ">=0.7.0,<0.8"
+
+[pypi-dependencies]
+tiled-export = ">=0.3, <0.4"
+hollowfoot = ">=0.2.0, <0.3"

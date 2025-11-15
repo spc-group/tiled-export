@@ -20,6 +20,7 @@ from tiled.client import from_profile_async
 from tiled.client.container import AsyncContainer
 from tiled.profiles import get_default_profile_name
 
+from tiled_export.experiment import prepare_experiment
 from tiled_export.serializers import update_summary_files
 
 NEXUS_MIMETYPE = "application/x-nexus"
@@ -76,7 +77,6 @@ async def export_run(
     base_name = re.sub(r"[ ]", "_", base_name)
     base_name = re.sub(r"[/]", "", base_name)
     # Write to disk
-    base_dir.mkdir(parents=True, exist_ok=True)
     for fmt in target_formats:
         ext = extensions[fmt]
         fp = base_dir / f"{base_name}{ext}"
@@ -195,10 +195,12 @@ async def export_runs(
             return
         for experiment, exp_df in df.groupby("experiment_name"):
             prog_task = progress.add_task(f"Exporting {experiment}…", total=len(exp_df))
+            experiment_dir = base_dir / experiment
+            await prepare_experiment(experiment_dir)
             for idx, row in exp_df.iterrows():
                 await export_run(
                     await runs[row.uid],
-                    base_dir=base_dir / experiment,
+                    base_dir=experiment_dir,
                     use_xdi=use_xdi,
                     use_nexus=use_nexus,
                     rewrite_hdf_links=rewrite_hdf_links,

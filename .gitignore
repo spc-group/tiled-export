@@ -1,3 +1,6 @@
+# Auto-generated template files
+src/tiled_export/experiment_template/pixi.lock
+
 # Ignore the cache dir
 cache/*
 
