@@ -11,6 +11,8 @@ from jinja2 import Template
 from nbformat import NotebookNode
 from tiled.client.container import AsyncContainer
 
+from tiled_export.protocols import Experiment
+
 
 def role(cell: NotebookNode) -> str | None:
     return cell.metadata.get("tiled_export", {}).get("role")
@@ -20,15 +22,28 @@ def cell_uid(cell) -> str | None:
     return cell.metadata.get("tiled_export", {}).get("run", {}).get("uid")
 
 
-def prepare_notebook(notebook: str | Path) -> None:
+def render_notebook_template_cell(
+    cell: NotebookNode, values: Mapping[str, Any]
+) -> NotebookNode:
+    if role(cell) != "notebook_template":
+        return cell
+    cell.metadata.tiled_export.role = "notebook"
+    cell.source = Template(cell.source).render(**values)
+    return cell
+
+
+def prepare_notebook(notebook: str | Path, experiment: Experiment) -> None:
     """Parse a jupyter notebook to fix any global template artifacts."""
     # Remove cells with template instructions, etc
     nb = nbformat.read(notebook, as_version=4)
     nb.cells = [cell for cell in nb.cells if role(cell) != "delete"]
+    # Format cells for the entire experiment
+    values = {"experiment": experiment}
+    nb.cells = [render_notebook_template_cell(cell, values=values) for cell in nb.cells]
     nbformat.write(nb, notebook)
 
 
-def render_template_cell(
+def render_run_template_cell(
     cell: NotebookNode, values: Mapping[str, Any]
 ) -> Mapping[str, Any]:
     """Take a template cell defined in the jupyter notebook and create
@@ -81,7 +96,7 @@ async def add_run(
         run["hdf_file"] = str(hdf_file.relative_to(notebook.parent))
     template_cells = [cell for cell in nb.cells if role(cell) == "run_template"]
     run_cells = [
-        render_template_cell(cell, values={"run": run}) for cell in template_cells
+        render_run_template_cell(cell, values={"run": run}) for cell in template_cells
     ]
     # Add cells to notebook
     nb.cells.extend(run_cells)
@@ -90,6 +105,7 @@ async def add_run(
 
 async def execute_notebook(notebook: Path) -> None:
     """Execute the python cells in the jupyter notebook."""
-    cmd = " ".join([shutil.which("pixi"), "run", "jupyter", "execute", str(notebook)])
-    proc = await asyncio.create_subprocess_exec(cmd, cwd=notebook.parent)
+    cmd = shutil.which("pixi")
+    cmd_args = ["run", "jupyter", "execute", str(notebook)]
+    proc = await asyncio.create_subprocess_exec(cmd, *cmd_args, cwd=notebook.parent)
     await proc.wait()

@@ -6,6 +6,7 @@ import pytest
 import pytest_asyncio
 
 from tiled_export.notebook import add_run, execute_notebook, prepare_notebook, role
+from tiled_export.protocols import Experiment
 
 
 @pytest.fixture()
@@ -71,10 +72,23 @@ async def test_add_run_data_file_paths(notebook, run):
 @pytest.mark.asyncio
 async def test_remove_instructions(notebook, run):
     """Make sure the tutorial instructions, etc get removed."""
-    prepare_notebook(notebook)
+    prepare_notebook(
+        notebook, experiment=Experiment(name="test", notebook="analysis.ipynb")
+    )
     nb = nbformat.read(notebook, as_version=4)
     template_instructions = [cell for cell in nb.cells if role(cell) == "delete"]
     assert len(template_instructions) == 0
+
+
+@pytest.mark.asyncio
+async def test_notebook_templates(notebook, run):
+    """Make sure the notebook template cells get formatted."""
+    prepare_notebook(
+        notebook, experiment=Experiment(name="test", notebook="analysis.ipynb")
+    )
+    nb = nbformat.read(notebook, as_version=4)
+    cell = nb.cells[0]
+    assert cell.metadata.tiled_export.role == "notebook"
 
 
 @pytest.mark.asyncio
@@ -90,7 +104,7 @@ async def test_execute_notebook(tmp_path, mocker):
     # Check that an attempt was made at calling jupyter
     assert mock.called
     call_args, call_kwargs = mock.call_args
-    cmd = call_args[0].split(" ")
-    assert "pixi" in cmd[0]
-    assert cmd[1:4] == ["run", "jupyter", "execute"]
-    assert cmd[4] == str(nb_file)
+    cmd = call_args[0]
+    cmd_args = call_args[1:5]
+    assert "pixi" in cmd
+    assert cmd_args == ("run", "jupyter", "execute", str(nb_file))

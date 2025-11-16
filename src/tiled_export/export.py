@@ -199,7 +199,7 @@ async def export_runs(
         for experiment, exp_df in df.groupby("experiment_name"):
             prog_task = progress.add_task(f"Exporting {experiment}…", total=len(exp_df))
             experiment_dir = base_dir / experiment
-            exp = await prepare_experiment(experiment_dir)
+            exp = await prepare_experiment(experiment_dir, name=experiment)
             for idx, row in exp_df.iterrows():
                 run = await runs[row.uid]
                 await export_run(
@@ -211,14 +211,14 @@ async def export_runs(
                 )
                 # Update the experiment's jupyter notebook
                 if to_jupyter:
-                    await add_run_to_notebook(run=run, notebook=experiment.notebook)
+                    await add_run_to_notebook(run=run, notebook=exp.notebook)
                 progress.update(prog_task, advance=1)
             # Prepare summary documents
             parquet_file = base_dir / experiment / "runs_summary.parquet"
             update_summary_files(runs=exp_df, parquet_file=parquet_file)
             # Make sure the notebook has fresh plots, etc
             if to_jupyter:
-                await execute_notebook(experiment.notebook)
+                await execute_notebook(exp.notebook)
 
 
 def parse_metadata(md):
