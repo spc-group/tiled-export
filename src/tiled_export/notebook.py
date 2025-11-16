@@ -106,6 +106,9 @@ async def add_run(
 async def execute_notebook(notebook: Path) -> None:
     """Execute the python cells in the jupyter notebook."""
     cmd = shutil.which("pixi")
-    cmd_args = ["run", "jupyter", "execute", str(notebook)]
-    proc = await asyncio.create_subprocess_exec(cmd, *cmd_args, cwd=notebook.parent)
+    cmd_args = ["run", "papermill", str(notebook), str(notebook)]
+    if cmd is not None:
+        proc = await asyncio.create_subprocess_exec(cmd, *cmd_args, cwd=notebook.parent)
+    else:
+        raise RuntimeError("Can not find pixi binary to execute notebook")
     await proc.wait()

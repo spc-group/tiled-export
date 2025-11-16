@@ -19,6 +19,7 @@ scipy = ">=1.16.3,<2"
 xraydb = ">=4.5.8,<5"
 jupyter = ">=1.1.1,<2"
 pixi-kernel = ">=0.7.0,<0.8"
+papermill = ">=2.6.0,<3"
 
 [pypi-dependencies]
 tiled-export = ">=0.3, <0.4"

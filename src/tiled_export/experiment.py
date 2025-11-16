@@ -12,7 +12,7 @@ def copy_template(path: Path) -> None:
         shutil.copy(str(template / filename), str(path))
 
 
-async def prepare_experiment(folder: Path, name: str) -> None:
+async def prepare_experiment(folder: Path, name: str) -> Experiment:
     """Set up folder structure and make API calls for a new experiment.
 
     If the experiment is already set up, no action will be taken.

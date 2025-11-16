@@ -107,4 +107,4 @@ async def test_execute_notebook(tmp_path, mocker):
     cmd = call_args[0]
     cmd_args = call_args[1:5]
     assert "pixi" in cmd
-    assert cmd_args == ("run", "jupyter", "execute", str(nb_file))
+    assert cmd_args == ("run", "papermill", str(nb_file), str(nb_file))
