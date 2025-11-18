@@ -6,6 +6,7 @@ platforms = ["linux-64"]
 version = "0.1.0"
 
 [tasks]
+notebok = "jupyter lab analysis.ipynb"
 
 [dependencies]
 matplotlib = ">=3.10.8,<4"
@@ -20,6 +21,8 @@ xraydb = ">=4.5.8,<5"
 jupyter = ">=1.1.1,<2"
 pixi-kernel = ">=0.7.0,<0.8"
 papermill = ">=2.6.0,<3"
+jupyterlab-h5web = ">=12.5.0,<13"
+marimo = ">=0.17.8,<0.18"
 
 [pypi-dependencies]
 tiled-export = ">=0.3, <0.4"

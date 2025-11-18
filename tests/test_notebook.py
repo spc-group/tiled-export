@@ -64,7 +64,7 @@ async def test_add_run_data_file_paths(notebook, run):
     run_cells = [cell for cell in nb.cells if role(cell) == "run"]
     code_cell = run_cells[1]
     print(code_cell)
-    assert '.from_aps_25idc_nexus("data.h5")' in code_cell.source
+    assert '.from_hdf_file("data.h5")' in code_cell.source
     assert '.update_hdf_file("data.h5")' in code_cell.source
     assert '.update_xdi_file("data.xdi")' in code_cell.source
 
