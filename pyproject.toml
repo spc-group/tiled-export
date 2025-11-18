@@ -1,6 +1,6 @@
 [project]
 name = "tiled-export"
-version = "0.4.0"
+version = "0.5.0"
 authors = [
   { name="Mark Wolfman", email="wolfman@anl.gov" },
 ]
@@ -30,7 +30,7 @@ dependencies = [
     "pyarrow",
     "tiled[client] @ git+https://github.com/spc-group/tiled.git@async_client",
     "nbformat",
-    "hollowfoot",
+    "hollowfoot >= 0.3.0",
     "mergedeep",
 ]
 
@@ -72,7 +72,6 @@ allow-direct-references = true
 
 [tool.ruff.lint]
 select = ["E9", "F63", "F7", "F82", "F401"]
-
 
 [tool.uv.sources]
 hollowfoot = { path = "../hollowfoot", editable = true }
