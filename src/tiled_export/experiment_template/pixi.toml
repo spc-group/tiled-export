@@ -25,5 +25,5 @@ jupyterlab-h5web = ">=12.5.0,<13"
 marimo = ">=0.17.8,<0.18"
 
 [pypi-dependencies]
-tiled-export = ">=0.3, <0.4"
+# tiled-export = ">=0.3, <0.4"
 hollowfoot = ">=0.2.0, <0.3"

@@ -73,5 +73,5 @@ allow-direct-references = true
 [tool.ruff.lint]
 select = ["E9", "F63", "F7", "F82", "F401"]
 
-[tool.uv.sources]
-hollowfoot = { path = "../hollowfoot", editable = true }
+# [tool.uv.sources]
+# hollowfoot = { path = "../hollowfoot", editable = true }
