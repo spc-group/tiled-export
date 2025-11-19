@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 from hollowfoot import Group
 
-from tiled_export import XRFAnalysis
+from tiled_export.experiment_template.xraytools import XRFAnalysis
 
 
 @pytest.fixture()
@@ -60,27 +60,29 @@ def test_correct_live_times():
 
 def test_apply_rois():
     data = np.linspace(0, 100, num=21 * 4 * 128).reshape(21, 4, 128)
-    group = Group(vortex_me4=data)
+    group = Group()
+    group["primary/vortex_me4"] = data
     analysis = XRFAnalysis([group])
     rois = {
-        "vortex_me4": {
+        "primary/vortex_me4": {
             "Ni-K": [slice(None), slice(104, 110)],
         }
     }
     analysis = analysis.apply_rois(rois).calculate()
     group = analysis.groups[0]
     np.testing.assert_array_equal(
-        group["vortex_me4-Ni-K"], np.sum(data[:, :, 104:110], axis=(1, 2))
+        group["primary/vortex_me4-Ni-K"], np.sum(data[:, :, 104:110], axis=(1, 2))
     )
 
 
 def test_plot_rois(mocker):
     mock_ax = mocker.MagicMock()
     data = np.linspace(0, 100, num=21 * 4 * 128).reshape(21, 4, 128)
-    group = Group(vortex_me4=data)
+    group = Group()
+    group["primary/vortex_me4"] = data
     analysis = XRFAnalysis([group])
     rois = {
-        "vortex_me4": {
+        "primary/vortex_me4": {
             "Ni-K": [slice(None), slice(104, 110)],
         }
     }

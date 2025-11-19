@@ -848,25 +848,14 @@ wheels = [
 [[package]]
 name = "hollowfoot"
 version = "0.3.0"
-source = { editable = "../hollowfoot" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
     { name = "xraylarch" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "numpy" },
-    { name = "xraylarch" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "black" },
-    { name = "isort" },
-    { name = "mypy" },
-    { name = "pytest" },
-    { name = "ruff" },
+sdist = { url = "https://files.pythonhosted.org/packages/0e/98/552156db4d51835d1154f62fbcb3e132181e2df8bdf51efc91b9768af4ef/hollowfoot-0.3.0.tar.gz", hash = "sha256:fdb8b5a6cf061ba6db14da5f29e7228a8db2779278d3cc9b0eacc4f7bde6b473", size = 618692, upload-time = "2025-11-18T17:56:50.157Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/33/1a/6e4d0f3703d29554cb9b65a18dfc6baa080991b0e2bed62312b5ce0a36d3/hollowfoot-0.3.0-py3-none-any.whl", hash = "sha256:ff174db999d71a63c532fd702014c16d2dc03c355d42d2292e7ca1cb8a53dd41", size = 8067, upload-time = "2025-11-18T17:56:49.136Z" },
 ]
 
 [[package]]
@@ -3289,7 +3278,7 @@ dev = [
 requires-dist = [
     { name = "h2" },
     { name = "h5py" },
-    { name = "hollowfoot", editable = "../hollowfoot" },
+    { name = "hollowfoot", specifier = ">=0.3.0" },
     { name = "httpx" },
     { name = "mergedeep" },
     { name = "nbformat" },

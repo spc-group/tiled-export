@@ -9,6 +9,9 @@ async def test_create_dir(tmp_path):
     assert not exp_path.exists()
     await prepare_experiment(exp_path, name="test")
     assert exp_path.exists()
+    init_file = exp_path / "xraytools" / "__init__.py"
+    assert init_file.exists()
+    assert (exp_path / "xraytools/__init__.py").exists()
 
 
 @pytest.mark.asyncio

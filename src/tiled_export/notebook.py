@@ -1,8 +1,9 @@
 import asyncio
+import importlib
+import logging
 import shutil
-import uuid
 from collections.abc import Mapping
-from copy import deepcopy
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,8 @@ from nbformat import NotebookNode
 from tiled.client.container import AsyncContainer
 
 from tiled_export.protocols import Experiment
+
+log = logging.getLogger(__name__)
 
 
 def role(cell: NotebookNode) -> str | None:
@@ -43,35 +46,64 @@ def prepare_notebook(notebook: str | Path, experiment: Experiment) -> None:
     nbformat.write(nb, notebook)
 
 
-def render_run_template_cell(
-    cell: NotebookNode, values: Mapping[str, Any]
-) -> Mapping[str, Any]:
-    """Take a template cell defined in the jupyter notebook and create
-    a new cell with run metadata inserted.
+RUN_MARKDOWN_TEMPLATE = """
+### {{ run.metadata.start.scan_name }}
+
+**UID:** ``{{ run.metadata.start.uid }}``
+**Start:** {{ run.start_time }}
+"""
+
+
+class CellType(str, Enum):
+    MARKDOWN = "markdown"
+    CODE = "code"
+
+
+def render_run_cell(
+    usage_template: str, values: Mapping[str, Any], cell_type: CellType
+) -> NotebookNode:
+    """Take a Jinja template for markdown and create a new notebook code
+    cell.
 
     """
-    # Update the cell metadata
-    new_metadata = deepcopy(cell.metadata)
-    cell_md = new_metadata.setdefault("tiled_export", {})
-    cell_md["role"] = "run"
     uid = values["run"]["metadata"].get("start", {}).get("uid")
-    cell_md.setdefault("run", {"uid": uid})
-    # Create the new jupyter notebook cell
-    new_source = Template(cell.source).render(**values)
-    new_cell = nbformat.NotebookNode(
-        {
-            "cell_type": cell.cell_type,
-            "id": str(uuid.uuid4()),
-            "metadata": new_metadata,
-            "source": new_source,
-        }
-    )
-    # Add metadata for specific cell types
-    if "execution_count" in cell:
-        new_cell["execution_count"] = None
-    if "outputs" in cell:
-        new_cell["outputs"] = []
+    print(usage_template, values)
+    source = Template(usage_template).render(**values)
+    cell_md = {"tiled_export": {"role": "run", "run": {"uid": uid}}}
+    new_cell = {
+        CellType.MARKDOWN: nbformat.v4.new_markdown_cell,
+        CellType.CODE: nbformat.v4.new_code_cell,
+    }[cell_type](source, metadata=cell_md)
     return new_cell
+
+
+# def render_run_code_cell(
+#     usage_template: str, values: Mapping[str, Any]
+# ) -> NotebookNode:
+#     """Take a Jinja template for python code and create a new notebook
+#     code cell.
+
+#     """
+#     uid = values["run"]["metadata"].get("start", {}).get("uid")
+#     source = Template(usage_template).render(**values)
+#     cell_md = {"tiled_export": {"role": "run", "run": {"uid": uid}}}
+#     new_cell = nbformat.v4.new_code_cell(source, metadata=cell_md)
+#     return new_cell
+
+
+def usage_template(folder: Path, module_name: str = "xrf_analysis"):
+    """Return the string template for how to use a particular xraytools module.
+
+    *folder* should point to the user's data folder (not the
+    tiled_export experiment template folder), in case users have made
+    local changes.
+
+    """
+    module_path = folder / "xraytools" / f"{module_name}.py"
+    spec = importlib.util.spec_from_file_location(module_name, module_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.USAGE_TEMPLATE.strip()
 
 
 async def add_run(
@@ -94,9 +126,12 @@ async def add_run(
         run["xdi_file"] = str(xdi_file.relative_to(notebook.parent))
     if hdf_file is not None:
         run["hdf_file"] = str(hdf_file.relative_to(notebook.parent))
-    template_cells = [cell for cell in nb.cells if role(cell) == "run_template"]
+    usage = usage_template(notebook.parent)
     run_cells = [
-        render_run_template_cell(cell, values={"run": run}) for cell in template_cells
+        render_run_cell(
+            RUN_MARKDOWN_TEMPLATE, values={"run": run}, cell_type=CellType.MARKDOWN
+        ),
+        render_run_cell(usage, values={"run": run}, cell_type=CellType.CODE),
     ]
     # Add cells to notebook
     nb.cells.extend(run_cells)
@@ -108,7 +143,16 @@ async def execute_notebook(notebook: Path) -> None:
     cmd = shutil.which("pixi")
     cmd_args = ["run", "papermill", str(notebook), str(notebook)]
     if cmd is not None:
-        proc = await asyncio.create_subprocess_exec(cmd, *cmd_args, cwd=notebook.parent)
+        proc = await asyncio.create_subprocess_exec(
+            cmd,
+            *cmd_args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=notebook.parent,
+        )
     else:
         raise RuntimeError("Can not find pixi binary to execute notebook")
-    await proc.wait()
+    stdout, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        log.error(stderr.decode())
+        raise RuntimeError("Failure executing notebook")

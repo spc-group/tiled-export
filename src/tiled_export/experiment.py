@@ -8,8 +8,18 @@ from tiled_export.protocols import Experiment
 def copy_template(path: Path) -> None:
     """Create pixi.toml, jupyterbook, etc for an experiment."""
     template = Path(__file__).parent / "experiment_template"
-    for filename in ["pixi.toml", ".gitignore", ".gitattributes", "analysis.ipynb"]:
-        shutil.copy(str(template / filename), str(path))
+    for filename in [
+        "pixi.toml",
+        ".gitignore",
+        ".gitattributes",
+        "analysis.ipynb",
+        "xraytools/__init__.py",
+        "xraytools/xrf_analysis.py",
+    ]:
+        src = template / filename
+        dest = path / filename
+        dest.parent.mkdir(parents=False, exist_ok=True)
+        shutil.copy(str(src), str(dest))
 
 
 async def prepare_experiment(folder: Path, name: str) -> Experiment:

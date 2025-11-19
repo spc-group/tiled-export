@@ -8,6 +8,17 @@ from hollowfoot import Analysis, Group, operation
 from mergedeep import merge
 from numpy.typing import NDArray
 
+USAGE_TEMPLATE = """
+(xrt.XRFAnalysis
+    .from_hdf_file("{{ run.hdf_file }}")
+    .correct_live_times()
+    .apply_rois(DEFAULT_ROIS)
+    # .update_hdf_file("{{ run.hdf_file }}")
+    # .update_xdi_file("{{ run.xdi_file }}")
+    .plot_spectra()
+)
+"""
+
 
 class HDFGroup(Group):
     def __init__(self, hdf_file: str, dataset_path: str, *args, **kwargs):

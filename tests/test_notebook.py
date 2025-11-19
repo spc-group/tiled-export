@@ -1,23 +1,23 @@
-import shutil
-from pathlib import Path
-
 import nbformat
 import pytest
 import pytest_asyncio
 
+from tiled_export.experiment import copy_template
 from tiled_export.notebook import add_run, execute_notebook, prepare_notebook, role
 from tiled_export.protocols import Experiment
 
 
 @pytest.fixture()
 def notebook(tmp_path):
-    src_file = (
-        Path(__file__).parent.parent
-        / "src/tiled_export/experiment_template/analysis.ipynb"
-    )
-    new_file = tmp_path / "analysis.ipynb"
-    shutil.copy(src_file, new_file)
-    return new_file
+    # src_file = (
+    #     Path(__file__).parent.parent
+    #     / "src/tiled_export/experiment_template/analysis.ipynb"
+    # )
+    # new_file = tmp_path / "analysis.ipynb"
+    # shutil.copy(src_file, new_file)
+    # shutil.copy(
+    copy_template(tmp_path)
+    return tmp_path / "analysis.ipynb"
 
 
 @pytest_asyncio.fixture()
@@ -63,7 +63,6 @@ async def test_add_run_data_file_paths(notebook, run):
     nb = nbformat.read(notebook, as_version=4)
     run_cells = [cell for cell in nb.cells if role(cell) == "run"]
     code_cell = run_cells[1]
-    print(code_cell)
     assert '.from_hdf_file("data.h5")' in code_cell.source
     assert '.update_hdf_file("data.h5")' in code_cell.source
     assert '.update_xdi_file("data.xdi")' in code_cell.source
@@ -93,7 +92,13 @@ async def test_notebook_templates(notebook, run):
 
 @pytest.mark.asyncio
 async def test_execute_notebook(tmp_path, mocker):
-    mock = mocker.patch("tiled_export.notebook.asyncio.create_subprocess_exec")
+    exec_mock = mocker.patch("tiled_export.notebook.asyncio.create_subprocess_exec")
+    process_mock = exec_mock.return_value
+    # process_mock = mocker.AsyncMock()
+    # # process_mock.returncode = 0
+    # # exec_mock.return_value = process_mock
+    process_mock.returncode = 0
+    process_mock.communicate.return_value = (b"", b"")
     # Make a simple hello world notebook to execute
     notebook = nbformat.v4.new_notebook()
     notebook.cells.append(nbformat.v4.new_code_cell(source="print('hello, world!')"))
@@ -102,8 +107,8 @@ async def test_execute_notebook(tmp_path, mocker):
     # Execute the notebook
     await execute_notebook(nb_file)
     # Check that an attempt was made at calling jupyter
-    assert mock.called
-    call_args, call_kwargs = mock.call_args
+    assert exec_mock.called
+    call_args, call_kwargs = exec_mock.call_args
     cmd = call_args[0]
     cmd_args = call_args[1:5]
     assert "pixi" in cmd
