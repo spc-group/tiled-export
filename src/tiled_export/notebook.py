@@ -1,5 +1,5 @@
 import asyncio
-import importlib
+import importlib.util
 import logging
 import shutil
 from collections.abc import Mapping
@@ -67,7 +67,6 @@ def render_run_cell(
 
     """
     uid = values["run"]["metadata"].get("start", {}).get("uid")
-    print(usage_template, values)
     source = Template(usage_template).render(**values)
     cell_md = {"tiled_export": {"role": "run", "run": {"uid": uid}}}
     new_cell = {
@@ -101,7 +100,11 @@ def usage_template(folder: Path, module_name: str = "xrf_analysis"):
     """
     module_path = folder / "xraytools" / f"{module_name}.py"
     spec = importlib.util.spec_from_file_location(module_name, module_path)
+    if spec is None:
+        raise ImportError(module_path)
     module = importlib.util.module_from_spec(spec)
+    if spec.loader is None:
+        raise ImportError(module_path)
     spec.loader.exec_module(module)
     return module.USAGE_TEMPLATE.strip()
 

@@ -5,7 +5,8 @@ import logging
 import os
 import re
 import textwrap
-from collections.abc import Generator, Sequence
+from collections.abc import Generator, Mapping, Sequence
+from enum import Enum
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -25,14 +26,17 @@ from tiled_export.notebook import add_run as add_run_to_notebook
 from tiled_export.notebook import execute_notebook
 from tiled_export.serializers import update_summary_files
 
-NEXUS_MIMETYPE = "application/x-nexus"
-XDI_MIMETYPE = "text/x-xdi"
-TSV_MIMETYPE = "text/tab-separated-values"
+
+class MimeType(str, Enum):
+    NEXUS = "application/x-nexus"
+    XDI = "text/x-xdi"
+    TSV = "text/tab-separated-values"
+
 
 extensions = {
-    NEXUS_MIMETYPE: ".hdf",
-    TSV_MIMETYPE: ".tab",
-    XDI_MIMETYPE: ".xdi",
+    MimeType.NEXUS: ".hdf",
+    MimeType.TSV: ".tab",
+    MimeType.XDI: ".xdi",
 }
 
 
@@ -43,25 +47,9 @@ class IncompleteRun(ValueError):
     pass
 
 
-async def export_run(
-    run: AsyncContainer,
-    *,
-    base_dir: Path,
-    use_xdi: bool = False,
-    use_nexus: bool = False,
-    rewrite_hdf_links: bool = False,
-):
-    # Decide on export formats
-    valid_formats = run.formats
-    target_formats = []
-    if use_nexus:
-        target_formats.append(NEXUS_MIMETYPE)
-    if use_xdi:
-        target_formats.append(
-            XDI_MIMETYPE if XDI_MIMETYPE in valid_formats else TSV_MIMETYPE
-        )
+def build_base_name(metadata: Mapping[str, Any]) -> str:
     # Decide on how to structure the file storage
-    start_doc = run.metadata.get("start", {})
+    start_doc = metadata.get("start", {})
     start_time = dt.datetime.fromtimestamp(start_doc.get("time", 0))
     sample_name = start_doc.get("sample_name")
     scan_name = start_doc.get("scan_name")
@@ -78,19 +66,43 @@ async def export_run(
     base_name = "-".join(bits)
     base_name = re.sub(r"[ ]", "_", base_name)
     base_name = re.sub(r"[/]", "", base_name)
+    return base_name
+
+
+async def export_run(
+    run: AsyncContainer,
+    *,
+    base_dir: Path,
+    use_xdi: bool = False,
+    use_nexus: bool = False,
+    rewrite_hdf_links: bool = False,
+):
+    # Decide on export formats
+    valid_formats = run.formats
+    target_formats = []
+    if use_nexus:
+        target_formats.append(MimeType.NEXUS)
+    if use_xdi:
+        target_formats.append(
+            MimeType.XDI if MimeType.XDI in valid_formats else MimeType.TSV
+        )
+    base_name = build_base_name(run.metadata)
+    start_doc = run.metadata.get("start", {})
     # Write to disk
     for fmt in target_formats:
         ext = extensions[fmt]
         fp = base_dir / f"{base_name}{ext}"
+        print(fmt.value, fp)
         if fp.exists():
             continue
         # Export files
         try:
-            await run.export(fp, format=fmt)
+            await run.export(fp, format=fmt.value)
         except HTTPStatusError as exc:
             print(start_doc["uid"], exc)
+            raise
         else:
-            if fmt == NEXUS_MIMETYPE and rewrite_hdf_links:
+            if fmt == MimeType.NEXUS and rewrite_hdf_links:
                 with h5py.File(fp, mode="a") as fd:
                     harden_external_links(fd[start_doc["uid"]])
 
@@ -210,8 +222,17 @@ async def export_runs(
                     rewrite_hdf_links=rewrite_hdf_links,
                 )
                 # Update the experiment's jupyter notebook
+                base_name = build_base_name(run.metadata)
+                xdi_file = experiment_dir / f"{base_name}{extensions[MimeType.XDI]}"
+                print(xdi_file)
+                hdf_file = experiment_dir / f"{base_name}{extensions[MimeType.NEXUS]}"
                 if to_jupyter:
-                    await add_run_to_notebook(run=run, notebook=exp.notebook)
+                    await add_run_to_notebook(
+                        run=run,
+                        notebook=exp.notebook,
+                        xdi_file=xdi_file,
+                        hdf_file=hdf_file,
+                    )
                 progress.update(prog_task, advance=1)
             # Prepare summary documents
             parquet_file = base_dir / experiment / "runs_summary.parquet"

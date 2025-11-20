@@ -11,11 +11,11 @@ from numpy.typing import NDArray
 USAGE_TEMPLATE = """
 (xrt.XRFAnalysis
     .from_hdf_file("{{ run.hdf_file }}")
-    .correct_live_times()
+    .correct_live_times(signals=DEFAULT_ROIS.keys())
     .apply_rois(DEFAULT_ROIS)
     # .update_hdf_file("{{ run.hdf_file }}")
     # .update_xdi_file("{{ run.xdi_file }}")
-    .plot_spectra()
+    .plot_rois()
 )
 """
 
