@@ -3,7 +3,11 @@ import numpy as np
 import pytest
 from hollowfoot import Group
 
-from tiled_export.experiment_template.xraytools import XRFAnalysis
+from tiled_export.experiment_template.xraytools import (
+    XRFAnalysis,
+    read_roi_sources,
+    read_rois,
+)
 
 
 @pytest.fixture()
@@ -64,14 +68,15 @@ def test_apply_rois():
     group["primary/vortex_me4"] = data
     analysis = XRFAnalysis([group])
     rois = {
-        "primary/vortex_me4": {
-            "Ni-K": [slice(None), slice(104, 110)],
+        "vortex_me4-Ni-K": {
+            "source": "primary/vortex_me4",
+            "slices": [slice(None), slice(104, 110)],
         }
     }
     analysis = analysis.apply_rois(rois).calculate()
     group = analysis.groups[0]
     np.testing.assert_array_equal(
-        group["primary/vortex_me4-Ni-K"], np.sum(data[:, :, 104:110], axis=(1, 2))
+        group["vortex_me4-Ni-K"], np.sum(data[:, :, 104:110], axis=(1, 2))
     )
 
 
@@ -82,11 +87,100 @@ def test_plot_rois(mocker):
     group["primary/vortex_me4"] = data
     analysis = XRFAnalysis([group])
     rois = {
-        "primary/vortex_me4": {
-            "Ni-K": [slice(None), slice(104, 110)],
+        "vortex_me4-Ni-K": {
+            "source": "primary/vortex_me4",
+            "slices": [slice(None), slice(104, 110)],
         }
     }
     analysis = analysis.apply_rois(rois)
     assert not mock_ax.axvspan.called
     analysis.plot_rois(ax=mock_ax)
     assert mock_ax.axvspan.called
+
+
+def test_read_full_roi(tmp_path):
+    """An empty ROI table should use all values in array."""
+    # Create a fake yaml file
+    roi_path = tmp_path / "rois.toml"
+    toml_text = "[ vortex_me4-total ]\nsource = 'vortex_me4'"
+    with open(roi_path, "w") as fp:
+        fp.write(toml_text)
+    # Read the yaml back in and check
+    new_rois = read_rois(roi_path)
+    assert new_rois == {
+        "vortex_me4-total": {"source": "vortex_me4", "slices": [slice(None)]}
+    }
+
+
+def test_read_full_roi(tmp_path):
+    """An empty ROI table should use all values in array."""
+    # Create a fake yaml file
+    roi_path = tmp_path / "rois.toml"
+    toml_text = "[ vortex_me4-total ]\nsource = 'vortex_me4'"
+    with open(roi_path, "w") as fp:
+        fp.write(toml_text)
+    # Read the yaml back in and check
+    new_rois = read_rois(roi_path)
+    assert new_rois == {
+        "vortex_me4-total": {"source": "vortex_me4", "slices": [slice(None)]}
+    }
+
+
+def test_read_roi_slice(tmp_path):
+    """An empty ROI table should use all values in array."""
+    # Create a fake yaml file
+    roi_path = tmp_path / "rois.toml"
+    toml_text = """
+        [ vortex_me4-total ]
+        source = 'vortex_me4'
+        slices = [{}, {start=150, stop=80, step=3}]
+    """
+    with open(roi_path, "w") as fp:
+        fp.write(toml_text)
+    # Read the yaml back in and check
+    new_rois = read_rois(roi_path)
+    assert new_rois == {
+        "vortex_me4-total": {
+            "source": "vortex_me4",
+            "slices": [slice(None), slice(150, 80, 3)],
+        }
+    }
+
+
+def test_read_roi_array(tmp_path):
+    """An empty ROI table should use all values in array."""
+    # Create a fake yaml file
+    roi_path = tmp_path / "rois.toml"
+    toml_text = """
+        [ vortex_me4-total ]
+        source = 'vortex_me4'
+        slices = [[0, 1, 3], {start=150, stop=80, step=3}]
+    """
+    with open(roi_path, "w") as fp:
+        fp.write(toml_text)
+    # Read the yaml back in and check
+    new_rois = read_rois(roi_path)
+    assert new_rois == {
+        "vortex_me4-total": {
+            "source": "vortex_me4",
+            "slices": [[0, 1, 3], slice(150, 80, 3)],
+        }
+    }
+
+
+def test_read_roi_sources(tmp_path):
+    """An empty ROI table should use all values in array."""
+    # Create a fake yaml file
+    roi_path = tmp_path / "rois.toml"
+    toml_text = """
+        [ vortex_me4-total ]
+        source = 'vortex_me4'
+
+        [ ge_8element-total ]
+        source = 'ge_8element'
+    """
+    with open(roi_path, "w") as fp:
+        fp.write(toml_text)
+    # Read the yaml back in and check
+    sources = read_roi_sources(roi_path)
+    assert sources == ["vortex_me4", "ge_8element"]

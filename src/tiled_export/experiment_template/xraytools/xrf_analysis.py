@@ -4,20 +4,56 @@ from pathlib import Path
 import h5py
 import matplotlib.pyplot as plt
 import numpy as np
+import tomlkit
 from hollowfoot import Analysis, Group, operation
 from mergedeep import merge
 from numpy.typing import NDArray
 
 USAGE_TEMPLATE = """
+rois =
 (xrt.XRFAnalysis
     .from_hdf_file("{{ run.hdf_file }}")
-    .correct_live_times(signals=DEFAULT_ROIS.keys())
-    .apply_rois(DEFAULT_ROIS)
+    .correct_live_times(xrt.read_roi_sources("rois.toml"))
+    .apply_rois(xrt.read_rois("rois.toml"))
     # .update_hdf_file("{{ run.hdf_file }}")
     # .update_xdi_file("{{ run.xdi_file }}")
     .plot_rois()
 )
 """
+
+
+def read_roi_sources(toml_file: str | Path):
+    rois = read_rois(toml_file)
+    sources = [roi["source"] for roi in rois.values()]
+    return list(dict.fromkeys(sources))
+
+
+def read_rois(toml_file: str | Path):
+    """Read a file containing defintions for regions-of-interest (ROI).
+
+    Parameters
+    ==========
+    toml_file
+      Location of the file containing ROI defintion.
+
+    Returns
+    =======
+    rois
+
+    """
+
+    def fix_slice(slc):
+        """Convert mappings to slice() objects."""
+        if isinstance(slc, Mapping):
+            return slice(slc.get("start"), slc.get("stop"), slc.get("step"))
+        return slc
+
+    with open(toml_file, mode="r") as fp:
+        rois = tomlkit.parse(fp.read()).unwrap()
+        for name, roi in rois.items():
+            slices = roi.get("slices", [slice(None)])
+            roi["slices"] = [fix_slice(slc) for slc in slices]
+    return rois
 
 
 class HDFGroup(Group):
@@ -103,11 +139,10 @@ class XRFAnalysis(Analysis):
         groups: Sequence[Group], rois: Mapping[str, Mapping[str, list[slice]]]
     ) -> Sequence[Group]:
         for group in groups:
-            for signal_name, signal_rois in rois.items():
-                for roi_name, roi in signal_rois.items():
-                    arr = group[signal_name][:, *roi]
-                    arr = np.sum(arr, axis=tuple(range(1, arr.ndim)))
-                    group[f"{signal_name}-{roi_name}"] = arr
+            for roi_name, roi in rois.items():
+                arr = group[roi["source"]][:, *roi["slices"]]
+                arr = np.sum(arr, axis=tuple(range(1, arr.ndim)))
+                group[roi_name] = arr
         return groups
 
     def plot_rois(self, ax=None):
@@ -122,12 +157,22 @@ class XRFAnalysis(Analysis):
             op_args = [op.bound_arguments.arguments for op in group.past_operations]
             roi_args = [args["rois"] for args in op_args if "rois" in args]
             rois = merge({}, *roi_args)
-            for ysignal, signal_rois in rois.items():
+            external_datasets = {}
+            for roi_name, roi in rois.items():
+                external_datasets.setdefault(roi["source"], {})[roi_name] = roi
+            # Plot each flourescence signal with its ROIs
+            for signal, rois in external_datasets.items():
                 if ax is None:
                     fig = plt.figure()
                     ax = plt.gca()
-                ydata = np.sum(group[ysignal], axis=(0, 1))
+                ydata = np.sum(group[signal], axis=(0, 1))
                 ax.plot(ydata)
-                for roi_name, roi in signal_rois.items():
-                    ax.axvspan(roi[1].start, roi[1].stop, alpha=0.5)
+                # Plot the ROIs (only those defined as slices, though)
+                for roi_name, roi in rois.items():
+                    if len(roi["slices"]) < 2 or not isinstance(
+                        roi["slices"][1], slice
+                    ):
+                        continue
+                    slc = roi["slices"][1]
+                    ax.axvspan(slc.start, slc.stop, alpha=0.5)
         return analysis

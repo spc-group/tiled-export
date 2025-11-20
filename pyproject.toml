@@ -32,11 +32,12 @@ dependencies = [
     "nbformat",
     "hollowfoot >= 0.3.0",
     "mergedeep",
+    "tomlkit",
 ]
 
 [dependency-groups]
 dev = [
-    "black",
+    "black[jupyter]",
     "pytest",
     "ruff",
     "isort",

@@ -1,0 +1,14 @@
+# Empty ROI uses whole array
+[ vortex_me4-total]
+source = "vortex_me4"
+slices = [ {} ]
+
+# ROI summed over all elements (``{}``) and bins 830-832.
+[ vortex_me4-Ni-K ]
+source = "vortex_me4"
+slices = [ {}, {start=830, stop=833} ]
+
+# Remove 3rd element from the array
+[ vortex_me4 ]
+source = "vortex_me4"
+slices = [ [0, 1, 3] ]

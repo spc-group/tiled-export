@@ -76,20 +76,6 @@ def render_run_cell(
     return new_cell
 
 
-# def render_run_code_cell(
-#     usage_template: str, values: Mapping[str, Any]
-# ) -> NotebookNode:
-#     """Take a Jinja template for python code and create a new notebook
-#     code cell.
-
-#     """
-#     uid = values["run"]["metadata"].get("start", {}).get("uid")
-#     source = Template(usage_template).render(**values)
-#     cell_md = {"tiled_export": {"role": "run", "run": {"uid": uid}}}
-#     new_cell = nbformat.v4.new_code_cell(source, metadata=cell_md)
-#     return new_cell
-
-
 def usage_template(folder: Path, module_name: str = "xrf_analysis"):
     """Return the string template for how to use a particular xraytools module.
 

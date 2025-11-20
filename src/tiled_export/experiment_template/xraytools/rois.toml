@@ -1,0 +1,22 @@
+# This file holds ROI definitions used for reduction of
+# energy-dispersive detector data. Each section will produce a new
+# signal with the name in that section's heading. *slices* is an array
+# with 1 entry for each axis of the external detector frame.
+
+
+# [ vortex_me4-total]
+# # Empty ROI uses whole array
+# source = "primary/vortex_me4"
+# slices = [ {} ]
+
+
+# [ vortex_me4-Ni-K ]
+# # ROI summed over all elements (``{}``) and bins 830-832.
+# source = "primary/vortex_me4"
+# slices = [ {}, {start=830, stop=833} ]
+
+
+# [ vortex_me4 ]
+# # Remove 3rd element from the array
+# source = "primary/vortex_me4"
+# slices = [ [0, 1, 3] ]
