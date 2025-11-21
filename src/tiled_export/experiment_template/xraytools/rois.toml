@@ -16,7 +16,7 @@
 # slices = [ {}, {start=830, stop=833} ]
 
 
-# [ vortex_me4 ]
-# # Remove 3rd element from the array
+# [ vortex_me4-Co-K ]
+# # Exclude 3rd element from the array
 # source = "primary/vortex_me4"
-# slices = [ [0, 1, 3] ]
+# slices = [ [0, 1, 3], {start=770, stop=775} ]

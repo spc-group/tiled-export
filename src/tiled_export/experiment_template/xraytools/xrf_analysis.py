@@ -57,16 +57,35 @@ def read_rois(toml_file: str | Path):
 
 
 class HDFGroup(Group):
-    def __init__(self, hdf_file: str, dataset_path: str, *args, **kwargs):
+    def __init__(
+        self, hdf_file: str, entry_path: str, dataset_path: str, *args, **kwargs
+    ):
         super().__init__(*args, **kwargs)
         self._hdf_file = hdf_file
+        self._entry_path = entry_path
         self._dataset_path = dataset_path
 
     def __getattr__(self, name: str):
         with h5py.File(self._hdf_file, mode="r") as h5fp:
-            path = self._dataset_path.format(name=name)
-            ds = h5fp[path][()]
+            path = f"{self._entry_path}/{self._dataset_path.format(name=name)}"
+            try:
+                ds = h5fp[path][()]
+            except (KeyError, TypeError) as exc:
+                msg = f"'{type(self).__name__}' has no attribute '{name}'"
+                raise AttributeError(msg) from exc
         return ds
+
+    def save_signals(self, signals: Sequence[str]):
+        """Save signals to the original NeXus file as NXData nodes."""
+        data_to_save = {signal: self[signal] for signal in signals}
+        with h5py.File(self._hdf_file, mode="a") as h5fp:
+            entry = h5fp[self._entry_path]
+            if "data" not in entry.keys():
+                data_group = entry.create_group("data")
+                data_group.attrs["NX_class"] = "NXdata"
+            data_group = entry["data"]
+            for signal, ds in data_to_save.items():
+                data_group.create_dataset(signal, data=ds)
 
 
 def entry_group(name: str, entry: h5py.Group) -> Group:
@@ -74,8 +93,13 @@ def entry_group(name: str, entry: h5py.Group) -> Group:
     individual bluesky run.
 
     """
-    dataset_path = f"{entry.name}/instrument/bluesky/streams/{{name}}/value"
-    group = HDFGroup(name=name, hdf_file=entry.file.filename, dataset_path=dataset_path)
+    dataset_path = "instrument/bluesky/streams/{name}/value"
+    group = HDFGroup(
+        name=name,
+        hdf_file=entry.file.filename,
+        entry_path=entry.name,
+        dataset_path=dataset_path,
+    )
     return group
 
 
@@ -145,7 +169,7 @@ class XRFAnalysis(Analysis):
                 group[roi_name] = arr
         return groups
 
-    def plot_rois(self, ax=None):
+    def plot_rois(self, ax=None) -> "XRFAnalysis":
         """Plot fluorescence spectra for previously applied ROIs.
 
         Depends on having called ``.apply_rois()`` first.
@@ -157,7 +181,7 @@ class XRFAnalysis(Analysis):
             op_args = [op.bound_arguments.arguments for op in group.past_operations]
             roi_args = [args["rois"] for args in op_args if "rois" in args]
             rois = merge({}, *roi_args)
-            external_datasets = {}
+            external_datasets: dict[str, h5py.Group] = {}
             for roi_name, roi in rois.items():
                 external_datasets.setdefault(roi["source"], {})[roi_name] = roi
             # Plot each flourescence signal with its ROIs
@@ -176,3 +200,22 @@ class XRFAnalysis(Analysis):
                     slc = roi["slices"][1]
                     ax.axvspan(slc.start, slc.stop, alpha=0.5)
         return analysis
+
+    @operation("Write new data back to HDF files.", defer=False)
+    def update_hdf_files(groups: Sequence[Group]) -> Sequence[Group]:
+        for group in groups:
+            op_args = [op.bound_arguments.arguments for op in group.past_operations]
+            roi_args = [args["rois"] for args in op_args if "rois" in args]
+            rois = merge({}, *roi_args)
+            group.save_signals(rois.keys())
+        return groups
+
+    @operation("Write new data back to XDI files.", defer=False)
+    def update_xdi_files(groups: Sequence[Group]) -> Sequence[Group]:
+        raise NotImplementedError()
+        for group in groups:
+            op_args = [op.bound_arguments.arguments for op in group.past_operations]
+            roi_args = [args["rois"] for args in op_args if "rois" in args]
+            rois = merge({}, *roi_args)
+            group.save_signals(rois.keys())
+        return groups

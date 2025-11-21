@@ -1,5 +1,6 @@
 import h5py
 import numpy as np
+import pandas as pd
 import pytest
 from hollowfoot import Group
 
@@ -8,6 +9,15 @@ from tiled_export.experiment_template.xraytools import (
     read_roi_sources,
     read_rois,
 )
+from tiled_export.experiment_template.xraytools.xrf_analysis import HDFGroup
+
+
+@pytest.fixture()
+def xdi_file(tmp_path):
+    xdi_path = tmp_path / "data.xdi"
+    with open(xdi_path, mode="w") as fp:
+        fp.write("# XDI/1.0\n# -----")
+    return xdi_path
 
 
 @pytest.fixture()
@@ -23,6 +33,8 @@ def hdf_file(tmp_path):
         )
         It_net_count = primary.create_group("It-net_count")
         It_net_count.create_dataset("value", data=np.linspace(9000, 10000, num=201))
+        vortex = primary.create_group("vortex_me4")
+        vortex.create_dataset("value", data=np.random.rand(201, 4, 1024))
     return hdf_path
 
 
@@ -32,6 +44,16 @@ def test_from_hdf_file(hdf_file):
     (group,) = analysis.groups
     # assert "It-net_count" in group
     assert group["primary/It-net_count"].shape == (201,)
+
+
+def test_hdf_save_signals(hdf_file):
+    group = HDFGroup(hdf_file, entry_path="scan0", dataset_path="")
+    group["vortex_me4-Ni-K"] = np.linspace(0, 100, num=101)
+    group.save_signals(["vortex_me4-Ni-K"])
+    # Check that the file was actually updated
+    with h5py.File(hdf_file, mode="r") as fp:
+        saved_data = fp["/scan0/data/vortex_me4-Ni-K"][()]
+    np.testing.assert_array_equal(saved_data, np.linspace(0, 100, num=101))
 
 
 def test_correct_live_times():
@@ -184,3 +206,33 @@ def test_read_roi_sources(tmp_path):
     # Read the yaml back in and check
     sources = read_roi_sources(roi_path)
     assert sources == ["vortex_me4", "ge_8element"]
+
+
+def test_update_hdf_rois(hdf_file):
+    analysis = XRFAnalysis.from_hdf_file(hdf_file)
+    rois = {
+        "vortex_me4-Ni-K": {
+            "source": "primary/vortex_me4",
+            "slices": [slice(None), slice(104, 110)],
+        }
+    }
+    analysis.apply_rois(rois).update_hdf_files()
+    # Check that the new dataset was saved
+    with h5py.File(hdf_file, mode="r") as fp:
+        ds = fp["scan0/data/vortex_me4-Ni-K"][()]
+
+
+@pytest.mark.skip(reason="Need to write the parser first.")
+def test_update_xdi_rois(hdf_file, xdi_file):
+    analysis = XRFAnalysis.from_hdf_file(hdf_file)
+    rois = {
+        "vortex_me4-Ni-K": {
+            "source": "primary/vortex_me4",
+            "slices": [slice(None), slice(104, 110)],
+        }
+    }
+    analysis.apply_rois(rois).update_xdi_files()
+    # Check that the new dataset was saved
+    df = pd.read_csv(xdi_file)
+    print(df)
+    assert False

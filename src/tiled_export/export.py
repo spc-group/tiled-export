@@ -224,7 +224,6 @@ async def export_runs(
                 # Update the experiment's jupyter notebook
                 base_name = build_base_name(run.metadata)
                 xdi_file = experiment_dir / f"{base_name}{extensions[MimeType.XDI]}"
-                print(xdi_file)
                 hdf_file = experiment_dir / f"{base_name}{extensions[MimeType.NEXUS]}"
                 if to_jupyter:
                     await add_run_to_notebook(

@@ -112,9 +112,13 @@ async def add_run(
     # Parse cell templates
     run = {"metadata": run.metadata}
     if xdi_file is not None:
-        run["xdi_file"] = str(xdi_file.relative_to(notebook.parent))
+        xdi_path = Path(xdi_file)
+        run["xdi_file"] = str(xdi_path.relative_to(notebook.parent))
+        run["xdi_file_exists"] = xdi_path.exists()
     if hdf_file is not None:
-        run["hdf_file"] = str(hdf_file.relative_to(notebook.parent))
+        hdf_path = Path(hdf_file)
+        run["hdf_file"] = str(hdf_path.relative_to(notebook.parent))
+        run["hdf_file_exists"] = xdi_path.exists()
     usage = usage_template(notebook.parent)
     run_cells = [
         render_run_cell(
