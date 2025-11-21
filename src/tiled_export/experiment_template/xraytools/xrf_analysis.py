@@ -1,5 +1,6 @@
+import warnings
 from collections.abc import Mapping, Sequence
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import h5py
 import matplotlib.pyplot as plt
@@ -8,15 +9,22 @@ import tomlkit
 from hollowfoot import Analysis, Group, operation
 from mergedeep import merge
 from numpy.typing import NDArray
+from tiled.client import from_profile
+from tiled.client.container import Container
+from tiled.profiles import get_default_profile_name
+
+# For some reason, jupyter lab does not show warnings without this
+#   Fix taken from https://github.com/microsoft/vscode-jupyter/issues/1312
+warnings.simplefilter(action="default")
 
 USAGE_TEMPLATE = """
-rois =
 (xrt.XRFAnalysis
-    .from_hdf_file("{{ run.hdf_file }}")
+    {% if run.hdf_file_exists is true %}.from_hdf_file("{{ run.hdf_file }}")
+    {% else %}.from_tiled("{{ run.metadata.start.uid }}"){% endif %}
     .correct_live_times(xrt.read_roi_sources("rois.toml"))
     .apply_rois(xrt.read_rois("rois.toml"))
-    # .update_hdf_file("{{ run.hdf_file }}")
-    # .update_xdi_file("{{ run.xdi_file }}")
+    {% if run.hdf_file_exists is false %}# {% endif %}.update_hdf_files()
+    # .update_xdi_files()
     .plot_rois()
 )
 """
@@ -53,6 +61,8 @@ def read_rois(toml_file: str | Path):
         for name, roi in rois.items():
             slices = roi.get("slices", [slice(None)])
             roi["slices"] = [fix_slice(slc) for slc in slices]
+    if len(rois) == 0:
+        warnings.warn(f"No ROI's are specified in '{toml_file}'.")
     return rois
 
 
@@ -85,7 +95,20 @@ class HDFGroup(Group):
                 data_group.attrs["NX_class"] = "NXdata"
             data_group = entry["data"]
             for signal, ds in data_to_save.items():
+                if signal in data_group:
+                    del data_group[signal]
                 data_group.create_dataset(signal, data=ds)
+
+
+class TiledGroup(Group):
+    def __init__(self, path: str, *args, client: Container, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.path = PurePosixPath(path)
+        self._client = client
+
+    def __getattr__(self, name: str):
+        data = self._client[str(self.path / "streams" / name)].read()
+        return data
 
 
 def entry_group(name: str, entry: h5py.Group) -> Group:
@@ -143,6 +166,20 @@ class XRFAnalysis(Analysis):
 
             groups = [entry_group(name=name, entry=entry) for name, entry in fd.items()]
         return cls(groups)
+
+    @classmethod
+    def from_tiled(
+        cls: type[Analysis],
+        path: str,
+        client: Container | None = None,
+        profile: str | None = None,
+    ):
+        """Load an analysis object from a Bluesky Tiled server."""
+        if client is None:
+            profile_name = get_default_profile_name() if profile is None else profile
+            client = from_profile(profile_name)
+        group = TiledGroup(path=path, client=client)
+        return cls([group])
 
     @operation("apply live time correction")
     def correct_live_times(groups, signals: Sequence[str]):

@@ -47,7 +47,8 @@ dev = [
     "pytest-mock",
     "build",
     "twine",
-    "ipython"
+    "ipython",
+    "tiled[server]",
 ]
 
 [project.urls]

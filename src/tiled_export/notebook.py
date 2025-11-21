@@ -31,7 +31,10 @@ def render_notebook_template_cell(
     if role(cell) != "notebook_template":
         return cell
     cell.metadata.tiled_export.role = "notebook"
-    cell.source = Template(cell.source).render(**values)
+    source = Template(cell.source).render(**values)
+    # Remove blank lines
+    lines = [line for line in source.split("\n") if line.strip()]
+    cell.source = "\n".join(lines)
     return cell
 
 
@@ -118,7 +121,7 @@ async def add_run(
     if hdf_file is not None:
         hdf_path = Path(hdf_file)
         run["hdf_file"] = str(hdf_path.relative_to(notebook.parent))
-        run["hdf_file_exists"] = xdi_path.exists()
+        run["hdf_file_exists"] = hdf_path.exists()
     usage = usage_template(notebook.parent)
     run_cells = [
         render_run_cell(

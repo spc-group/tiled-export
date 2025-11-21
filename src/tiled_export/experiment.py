@@ -12,6 +12,7 @@ def copy_template(path: Path) -> None:
         "pixi.toml",
         ".gitignore",
         ".gitattributes",
+        "rois.toml",
         "analysis.ipynb",
         "xraytools/__init__.py",
         "xraytools/xrf_analysis.py",
@@ -19,7 +20,8 @@ def copy_template(path: Path) -> None:
         src = template / filename
         dest = path / filename
         dest.parent.mkdir(parents=False, exist_ok=True)
-        shutil.copy(str(src), str(dest))
+        if not dest.exists():
+            shutil.copy(str(src), str(dest))
 
 
 async def prepare_experiment(folder: Path, name: str) -> Experiment:

@@ -9,13 +9,6 @@ from tiled_export.protocols import Experiment
 
 @pytest.fixture()
 def notebook(tmp_path):
-    # src_file = (
-    #     Path(__file__).parent.parent
-    #     / "src/tiled_export/experiment_template/analysis.ipynb"
-    # )
-    # new_file = tmp_path / "analysis.ipynb"
-    # shutil.copy(src_file, new_file)
-    # shutil.copy(
     copy_template(tmp_path)
     return tmp_path / "analysis.ipynb"
 
@@ -51,21 +44,46 @@ async def test_add_run_cells_idempotence(notebook, run):
     assert len(run_cells) == 2
 
 
+@pytest.mark.skip("Need to write an XDI parser first")
 @pytest.mark.asyncio
 async def test_add_run_data_file_paths(notebook, run):
     """Check that the XDI/NeXus file paths are in the template."""
+    xdi_path = notebook.parent / "data.xdi"
+    xdi_path.touch()
+    hdf_path = notebook.parent / "data.h5"
+    hdf_path.touch()
     await add_run(
         run,
         notebook,
-        xdi_file=notebook.parent / "data.xdi",
-        hdf_file=notebook.parent / "data.h5",
+        xdi_file=xdi_path,
+        hdf_file=hdf_path,
     )
     nb = nbformat.read(notebook, as_version=4)
     run_cells = [cell for cell in nb.cells if role(cell) == "run"]
     code_cell = run_cells[1]
     assert '.from_hdf_file("data.h5")' in code_cell.source
+    assert ".from_tiled" not in code_cell.source
     assert '.update_hdf_file("data.h5")' in code_cell.source
+    assert '# .update_hdf_file("data.h5")' not in code_cell.source
     assert '.update_xdi_file("data.xdi")' in code_cell.source
+    assert '# .update_xdi_file("data.xdi")' not in code_cell.source
+
+
+@pytest.mark.asyncio
+async def test_add_run_data_no_files(notebook, run):
+    """Check that the right modifications are made if no files are available."""
+    await add_run(
+        run,
+        notebook,
+        xdi_file=notebook.parent / "no_file.xdi",
+        hdf_file=notebook.parent / "no_file.h5",
+    )
+    nb = nbformat.read(notebook, as_version=4)
+    run_cells = [cell for cell in nb.cells if role(cell) == "run"]
+    code_cell = run_cells[1]
+    assert '.from_tiled("12345")' in code_cell.source
+    assert "# .update_hdf_files()" in code_cell.source
+    assert "# .update_xdi_files()" in code_cell.source
 
 
 @pytest.mark.asyncio

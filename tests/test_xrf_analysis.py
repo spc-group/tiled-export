@@ -46,6 +46,12 @@ def test_from_hdf_file(hdf_file):
     assert group["primary/It-net_count"].shape == (201,)
 
 
+def test_from_tiled(tiled_client):
+    anl = XRFAnalysis.from_tiled("scan0", client=tiled_client)
+    expected = tiled_client["scan0/streams/primary/x"].read()
+    np.testing.assert_array_equal(anl.groups[0]["primary/x"], expected)
+
+
 def test_hdf_save_signals(hdf_file):
     group = HDFGroup(hdf_file, entry_path="scan0", dataset_path="")
     group["vortex_me4-Ni-K"] = np.linspace(0, 100, num=101)
@@ -222,6 +228,27 @@ def test_update_hdf_rois(hdf_file):
         ds = fp["scan0/data/vortex_me4-Ni-K"][()]
 
 
+def test_update_hdf_replaces_rois(hdf_file):
+    # Set a dummy dataset to be overwritten
+    with h5py.File(hdf_file, mode="a") as h5fp:
+        h5fp["/scan0/"].create_group("data")
+        h5fp["/scan0/data/"].create_dataset(
+            "vortex_me4-Ni-K", np.linspace(0, 20, num=21)
+        )
+    analysis = XRFAnalysis.from_hdf_file(hdf_file)
+    rois = {
+        "vortex_me4-Ni-K": {
+            "source": "primary/vortex_me4",
+            "slices": [slice(None), slice(104, 110)],
+        }
+    }
+    analysis.apply_rois(rois).update_hdf_files()
+    # Check that the new dataset was saved
+    with h5py.File(hdf_file, mode="r") as fp:
+        ds = fp["scan0/data/vortex_me4-Ni-K"][()]
+        assert ds.shape == (201,)
+
+
 @pytest.mark.skip(reason="Need to write the parser first.")
 def test_update_xdi_rois(hdf_file, xdi_file):
     analysis = XRFAnalysis.from_hdf_file(hdf_file)
@@ -234,5 +261,4 @@ def test_update_xdi_rois(hdf_file, xdi_file):
     analysis.apply_rois(rois).update_xdi_files()
     # Check that the new dataset was saved
     df = pd.read_csv(xdi_file)
-    print(df)
     assert False

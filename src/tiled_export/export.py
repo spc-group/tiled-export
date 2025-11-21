@@ -92,7 +92,6 @@ async def export_run(
     for fmt in target_formats:
         ext = extensions[fmt]
         fp = base_dir / f"{base_name}{ext}"
-        print(fmt.value, fp)
         if fp.exists():
             continue
         # Export files
@@ -371,9 +370,9 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         action="store_true",
     )
     parser.add_argument(
-        "--jupyter",
-        "-J",
-        help="Create and modify a jupyter notebook with analysis and results.",
+        "--notebook",
+        "-N",
+        help="Create and modify a notebook with analysis and results.",
         action="store_true",
     )
     args = parser.parse_args(argv)
@@ -418,7 +417,7 @@ async def _main(argv=None):
         runs=runs,
         use_xdi=args.xdi,
         use_nexus=args.hdf,
-        to_jupyter=args.jupyter,
+        to_jupyter=args.notebook,
         rewrite_hdf_links=args.hdf_expand,
     )
 
