@@ -1132,15 +1132,16 @@ wheels = [
 
 [[package]]
 name = "hollowfoot"
-version = "0.4.0"
+version = "0.5.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
+    { name = "xarray" },
     { name = "xraylarch" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/9b/8e/6b18718d827aa7f0de36381dceabf763e95fd2de6965c136a63dabac896f/hollowfoot-0.4.0.tar.gz", hash = "sha256:52fd21ce1ae2555fc21ad099d954adfd465e7058741a0b1b6ba86ee91d45ec42", size = 618957, upload-time = "2025-11-21T00:11:27.023Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c8/bf/8916b478c5950e92bb2cec57362a59d99646ce7af93cfcabf4a65e8280bf/hollowfoot-0.5.1.tar.gz", hash = "sha256:1c1681d2211a6cfb87b9120c4df2de1fcf9455d14a5ba68586e55bf54bee0326", size = 534743, upload-time = "2025-11-25T03:59:20.418Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/bb/04/5e318d1b160d0e1ec6bc58831024476fad81c6f4c77003ef175284db2b02/hollowfoot-0.4.0-py3-none-any.whl", hash = "sha256:f2b7392344af90734bdf581f653b72366dc898670f4c831cfcb91bb7b30bed28", size = 8085, upload-time = "2025-11-21T00:11:26.072Z" },
+    { url = "https://files.pythonhosted.org/packages/6e/26/b3e04f65f8759ca27737168feaa2ea653e0a9bd03fc2ea3259ce2a0527c6/hollowfoot-0.5.1-py3-none-any.whl", hash = "sha256:8b07e243ffdf5acaf26d6d2943b64ae6cb0bd09e079f4a8ed5e07969c75233d8", size = 11901, upload-time = "2025-11-25T03:59:19.402Z" },
 ]
 
 [[package]]
@@ -3776,7 +3777,7 @@ dev = [
 requires-dist = [
     { name = "h2" },
     { name = "h5py" },
-    { name = "hollowfoot", specifier = ">=0.4.0" },
+    { name = "hollowfoot", specifier = ">=0.5.1" },
     { name = "httpx" },
     { name = "mergedeep" },
     { name = "nbformat" },

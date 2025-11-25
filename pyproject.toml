@@ -30,7 +30,7 @@ dependencies = [
     "pyarrow",
     "tiled[client] @ git+https://github.com/spc-group/tiled.git@async_client",
     "nbformat",
-    "hollowfoot >= 0.4.0",
+    "hollowfoot >= 0.5.1",
     "mergedeep",
     "tomlkit",
 ]

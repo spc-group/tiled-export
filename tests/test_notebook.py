@@ -44,7 +44,6 @@ async def test_add_run_cells_idempotence(notebook, run):
     assert len(run_cells) == 2
 
 
-@pytest.mark.skip("Need to write an XDI parser first")
 @pytest.mark.asyncio
 async def test_add_run_data_file_paths(notebook, run):
     """Check that the XDI/NeXus file paths are in the template."""
@@ -63,10 +62,10 @@ async def test_add_run_data_file_paths(notebook, run):
     code_cell = run_cells[1]
     assert '.from_hdf_file("data.h5")' in code_cell.source
     assert ".from_tiled" not in code_cell.source
-    assert '.update_hdf_file("data.h5")' in code_cell.source
-    assert '# .update_hdf_file("data.h5")' not in code_cell.source
-    assert '.update_xdi_file("data.xdi")' in code_cell.source
-    assert '# .update_xdi_file("data.xdi")' not in code_cell.source
+    assert ".update_hdf_files()" in code_cell.source
+    assert "# .update_hdf_files()" not in code_cell.source
+    assert ".update_xdi_files()" in code_cell.source
+    assert "# .update_xdi_files()" not in code_cell.source
 
 
 @pytest.mark.asyncio

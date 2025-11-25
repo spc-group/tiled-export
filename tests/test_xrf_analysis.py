@@ -1,8 +1,8 @@
 import h5py
 import numpy as np
-import pandas as pd
 import pytest
-from hollowfoot import Group
+import xarray as xr
+from hollowfoot import Group, xdi
 
 from tiled_export.experiment_template.xraytools import (
     XRFAnalysis,
@@ -15,8 +15,20 @@ from tiled_export.experiment_template.xraytools.xrf_analysis import HDFGroup
 @pytest.fixture()
 def xdi_file(tmp_path):
     xdi_path = tmp_path / "data.xdi"
+    ds = xr.Dataset(
+        coords={
+            "energy": np.linspace(8300, 8400, num=201),
+        },
+        data_vars={
+            "i0": ("energy", np.random.rand(201)),
+        },
+        attrs={
+            "xdi_version": "1.0",
+            "versions": {},
+        },
+    )
     with open(xdi_path, mode="w") as fp:
-        fp.write("# XDI/1.0\n# -----")
+        fp.write(xdi.dump(ds))
     return xdi_path
 
 
@@ -249,7 +261,6 @@ def test_update_hdf_replaces_rois(hdf_file):
         assert ds.shape == (201,)
 
 
-@pytest.mark.skip(reason="Need to write the parser first.")
 def test_update_xdi_rois(hdf_file, xdi_file):
     analysis = XRFAnalysis.from_hdf_file(hdf_file)
     rois = {
@@ -260,5 +271,5 @@ def test_update_xdi_rois(hdf_file, xdi_file):
     }
     analysis.apply_rois(rois).update_xdi_files()
     # Check that the new dataset was saved
-    df = pd.read_csv(xdi_file)
-    assert False
+    ds = xr.open_dataset(xdi_file)
+    assert "vortex_me4-Ni-K" in list(ds.data_vars.keys())

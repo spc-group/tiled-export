@@ -6,7 +6,8 @@ import h5py
 import matplotlib.pyplot as plt
 import numpy as np
 import tomlkit
-from hollowfoot import Analysis, Group, operation
+import xarray as xr
+from hollowfoot import Analysis, Group, operation, xdi
 from mergedeep import merge
 from numpy.typing import NDArray
 from tiled.client import from_profile
@@ -24,7 +25,7 @@ USAGE_TEMPLATE = """
     .correct_live_times(xrt.read_roi_sources("rois.toml"))
     .apply_rois(xrt.read_rois("rois.toml"))
     {% if run.hdf_file_exists is false %}# {% endif %}.update_hdf_files()
-    # .update_xdi_files()
+    {% if run.xdi_file_exists is false %}# {% endif %}.update_xdi_files()
     .plot_rois()
 )
 """
@@ -249,10 +250,27 @@ class XRFAnalysis(Analysis):
 
     @operation("Write new data back to XDI files.", defer=False)
     def update_xdi_files(groups: Sequence[Group]) -> Sequence[Group]:
-        raise NotImplementedError()
+
         for group in groups:
             op_args = [op.bound_arguments.arguments for op in group.past_operations]
             roi_args = [args["rois"] for args in op_args if "rois" in args]
             rois = merge({}, *roi_args)
-            group.save_signals(rois.keys())
+            # Read existing XDI file
+            hdf_path = Path(group._hdf_file)
+            xdi_path = hdf_path.parent / f"{hdf_path.stem}.xdi"
+            with open(xdi_path, mode="r") as fp:
+                ds = xdi.load(fp.read())
+            # Add the new ROI signals to the dataset
+            abscissa = list(set(ds.dims))[0]
+            new_data_vars = {
+                roi_name: (abscissa, group[roi_name]) for roi_name in rois.keys()
+            }
+            new_ds = xr.Dataset(
+                coords=ds.coords,
+                data_vars={**ds.data_vars, **new_data_vars},
+                attrs=ds.attrs,
+            )
+            # Write the new dataset back to disk
+            with open(xdi_path, mode="w") as fp:
+                fp.write(xdi.dump(new_ds))
         return groups
