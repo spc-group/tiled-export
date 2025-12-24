@@ -49,6 +49,8 @@ dev = [
     "twine",
     "ipython",
     "tiled[server]",
+    "pandas",
+    "nexusformat>=2.0.0",
 ]
 
 [project.urls]
