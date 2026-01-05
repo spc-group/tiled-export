@@ -6,29 +6,38 @@ import h5py
 import numpy as np
 import pytest
 
-from tiled_export.export import build_queries, export_run, harden_external_links
+from tiled_export.export import (
+    QuerySet,
+    export_run,
+    fetch_experiments,
+    harden_external_links,
+    parse_args,
+)
 
 
-def test_build_quries_empty():
-    qs = build_queries(exit_status=None)
-    assert len(qs) == 0
+def test_empty_queryset_queries():
+    qs = QuerySet(exit_status=None)
+    assert len(qs.queries()) == 0
 
 
-def test_build_quries_with_filters():
-    qs = build_queries(
+def test_queryset_queries_with_filters():
+    qs = QuerySet(
         before="2025-10-05T08:00:00",
         after="2025-10-03T09:00:00",
-        esaf="549301",
-        proposal="22348",
-        sample_name="NMC-833",
+        exit_status="success",
         plan_name="xafs_scan",
+        sample_name="NMC-833",
         sample_formula="NiMnCo",
         scan_name="pristine",
         edge="Ni-K",
+        proposal="22348",
+        beamline="25-ID-C",
+        esaf="549301",
         uid="a1b2c3d4-e5f6",
     )
-    assert len(qs) == 11
-    assert qs[0].key == "stop.exit_status"
+    queries = qs.queries()
+    assert len(queries) == 12
+    assert queries[0].key == "stop.exit_status"
 
 
 @pytest.mark.asyncio
@@ -49,6 +58,15 @@ def temp_h5_file():
     except:
         fd.delete()
         raise
+
+
+@pytest.mark.asyncio
+async def test_apply_queryset(mocker):
+    catalog = mocker.MagicMock()
+    catalog.search.return_value = catalog
+    qs = QuerySet(before="2025-10-05T08:00:00", after="2025-10-03T09:00:00")
+    catalog = qs.apply(catalog)
+    assert catalog.search.call_count == 2
 
 
 @pytest.mark.skip(reason="Needs to be re-written to work with bluesky run schema.")
@@ -73,3 +91,33 @@ async def test_harden_link(temp_h5_file):
                 target_file.get("target_link", getlink=True), h5py.HardLink
             )
             assert len(target_file.keys()) == 1
+
+
+@pytest.mark.asyncio
+async def test_fetch_experiments(tiled_async_client):
+    queries = QuerySet()
+    exps = fetch_experiments(catalog=tiled_async_client, queries=queries)
+    exps = [exp async for exp in exps]
+
+
+def test_parse_args():
+    args = parse_args(
+        [
+            "-p",
+            "default",
+        ]
+    )
+    assert args.tiled_profile == "default"
+
+
+def test_parse_datetime_args():
+    args = parse_args(
+        [
+            "-A",
+            "2025-12-31T08:45:00-05:00",
+            "--before",
+            "2025-12-31T08:45:03-05:00",
+        ]
+    )
+    assert args.after == 1767188700
+    assert args.before == 1767188703

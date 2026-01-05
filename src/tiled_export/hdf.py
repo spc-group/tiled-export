@@ -4,7 +4,7 @@ import logging
 import warnings
 from collections.abc import Sequence
 from pathlib import Path
-from typing import IO
+from typing import IO, Any
 
 import h5py
 import numpy as np
@@ -14,7 +14,7 @@ from tiled.utils import SerializationError, path_from_uri
 log = logging.getLogger(__name__)
 
 
-def nxgroup(parent: h5py.Group, name: str, nx_class: str = None) -> h5py.Group:
+def nxgroup(parent: h5py.Group, name: str, nx_class: str | None = None) -> h5py.Group:
     group = parent.create_group(name)
     if nx_class is not None:
         group.attrs["NX_class"] = nx_class
@@ -48,7 +48,7 @@ def nxlink(parent: h5py.Group, name: str, target: h5py.Group | str, soft=False):
         target_name = target
         link = h5py.SoftLink(target_name)
     else:
-        target_name = target.name
+        target_name = getattr(target, "name", target)
         link = target
     parent[name] = link
     # Add metadata attrs
@@ -124,7 +124,7 @@ def to_hdf_type(value):
     return new_type(value)
 
 
-def write_metadata(metadata: dict[str], entry: h5py.Group):
+def write_metadata(metadata: dict[str, Any], entry: h5py.Group):
     """Write run-level metadata to the Nexus file."""
     bluesky_group = entry["instrument/bluesky"]
     md_group = nxnote(bluesky_group, "metadata")

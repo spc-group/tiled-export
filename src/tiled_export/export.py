@@ -5,7 +5,8 @@ import logging
 import os
 import re
 import textwrap
-from collections.abc import Generator, Mapping, Sequence
+from collections.abc import AsyncGenerator, Generator, Mapping, Sequence
+from dataclasses import dataclass
 from enum import Enum
 from functools import partial
 from pathlib import Path
@@ -14,14 +15,13 @@ from typing import Any
 import h5py
 import pandas as pd
 from httpx import HTTPStatusError
-from rich.progress import Progress
-from rich.table import Table
 from tiled import queries
 from tiled.client import from_profile_async
 from tiled.client.container import AsyncContainer
 from tiled.profiles import get_default_profile_name
 
 from tiled_export.experiment import prepare_experiment
+from tiled_export.live_table import LiveTable
 from tiled_export.notebook import add_run as add_run_to_notebook
 from tiled_export.notebook import execute_notebook
 from tiled_export.serializers import update_summary_files
@@ -106,51 +106,6 @@ async def export_run(
                     harden_external_links(fd[start_doc["uid"]])
 
 
-def build_queries(
-    *,
-    exit_status: str | None = "success",
-    before: str | None = None,
-    after: str | None = None,
-    esaf: str | None = None,
-    proposal: str | None = None,
-    beamline: str | None = None,
-    sample_name: str | None = None,
-    plan_name: str | None = None,
-    sample_formula: str | None = None,
-    scan_name: str | None = None,
-    edge: str | None = None,
-    uid: str | None = None,
-) -> list[queries.NoBool]:
-    # Parse datestrings
-    before_ts: float | None = None
-    after_ts: float | None = None
-    if before is not None:
-        before_ts = dt.datetime.fromisoformat(before).timestamp()
-    if after is not None:
-        after_ts = dt.datetime.fromisoformat(after).timestamp()
-    # Process the queries parameters into actual queries
-    qs = []
-    query_params = [
-        # filter_name: (query type, metadata key)
-        (exit_status, queries.Eq, "stop.exit_status"),
-        (plan_name, queries.Eq, "start.plan_name"),
-        (sample_name, queries.Contains, "start.sample_name"),
-        (sample_formula, queries.Contains, "start.sample_formula"),
-        (scan_name, queries.Contains, "start.scan_name"),
-        (edge, queries.Contains, "start.edge"),
-        (proposal, queries.Eq, "start.proposal_id"),
-        (beamline, queries.Contains, "start.beamline_id"),
-        (esaf, queries.Eq, "start.esaf_id"),
-        (before_ts, partial(queries.Comparison, "le"), "stop.time"),
-        (after_ts, partial(queries.Comparison, "ge"), "start.time"),
-        (uid, queries.Contains, "start.uid"),
-    ]
-    for arg, query, key in query_params:
-        if arg is not None:
-            qs.append(query(key, arg))
-    return qs
-
-
 async def table_row(run: AsyncContainer) -> list[str]:
     md = await run.metadata
     start_dt = dt.datetime.fromtimestamp(md["start"]["time"])
@@ -166,72 +121,125 @@ async def table_row(run: AsyncContainer) -> list[str]:
     ]
 
 
+@dataclass(frozen=True)
+class QuerySet:
+    before: int | float | None = None
+    after: int | float | None = None
+    exit_status: str | None = None
+    plan_name: str | None = None
+    sample_name: str | None = None
+    sample_formula: str | None = None
+    scan_name: str | None = None
+    edge: str | None = None
+    proposal: str | None = None
+    esaf: str | None = None
+    beamline: str | None = None
+    uid: str | None = None
+
+    def queries(self) -> list[tuple[Any, None, str]]:
+        """Build the individual queries that should be applied for this
+        queryset.
+
+        """
+        # Process the queries parameters into actual queries
+        qs = []
+        query_params = [
+            # filter_name: (query type, metadata key)
+            (self.exit_status, queries.Eq, "stop.exit_status"),
+            (self.plan_name, queries.Eq, "start.plan_name"),
+            (self.sample_name, queries.Contains, "start.sample_name"),
+            (self.sample_formula, queries.Contains, "start.sample_formula"),
+            (self.scan_name, queries.Contains, "start.scan_name"),
+            (self.edge, queries.Contains, "start.edge"),
+            (self.proposal, queries.Eq, "start.proposal_id"),
+            (self.beamline, queries.Contains, "start.beamline_id"),
+            (self.esaf, queries.Eq, "start.esaf_id"),
+            (self.before, partial(queries.Comparison, "le"), "stop.time"),
+            (self.after, partial(queries.Comparison, "ge"), "start.time"),
+            (self.uid, queries.Contains, "start.uid"),
+        ]
+        for arg, query, key in query_params:
+            if arg is not None:
+                qs.append(query(key, arg))
+        return qs
+
+    def apply(self, container: AsyncContainer):
+        runs = container
+        for query in self.queries():
+            runs = runs.search(query)
+        return runs
+
+
+async def fetch_experiments(
+    catalog: AsyncContainer, queries: QuerySet, *, watch: bool = False
+) -> AsyncGenerator[pd.DataFrame, Any]:
+    """Retrieve runs from the API and yield blocks of runs grouped by experiment."""
+    # Build a DataFrame with all the metadata
+    data: dict[str, list[str | int | float]] = {}
+    runs = queries.apply(catalog)
+    async for run in runs.values():
+        for key, val in parse_metadata(run.metadata).items():
+            data.setdefault(key, []).append(val)
+    df = pd.DataFrame(data)
+    # Yield the individual experiments
+    for experiment, exp_df in df.groupby("experiment_name"):
+        yield experiment, exp_df
+
+
 async def export_runs(
     base_dir: Path | None,
-    runs: AsyncContainer,
+    catalog: AsyncContainer,
+    queries: QuerySet,
     use_xdi: bool,
     use_nexus: bool,
     to_jupyter: bool = False,
     rewrite_hdf_links: bool = False,
+    watch: bool = False,
 ):
     # Print a table of runs for approval
-    with Progress() as progress:
-        md_task = progress.add_task("Reading metadata…", total=None, start=False)
-        # Build a DataFrame with all the metadata
-        data: dict[str, list[str | int | float]] = {}
-        async for run in runs.values():
-            progress.start_task(md_task)
-            for key, val in parse_metadata(run.metadata).items():
-                data.setdefault(key, []).append(val)
-        df = pd.DataFrame(data)
-        progress.update(md_task, advance=1, total=1)
-        # Build a table of results
-        table = Table()
-        headers = ["#", "UID", "Start", "Status", "Beamline", "Sample", "Scan", "Plan"]
-        for col in headers:
-            table.add_column(col)
-        for idx, row in df.iterrows():
-            row = [
-                idx,
-                row.uid,
-                dt.datetime.fromtimestamp(row.start_time).strftime("%Y-%m-%d %H:%M:%S"),
-                row.exit_status,
-                row.beamline,
-                row.sample_name,
-                row.scan_name,
-                row.plan_name,
-            ]
-            table.add_row(*[str(item) for item in row])
-        progress.console.print(table)
-        # Do the exporting
-        if base_dir is None or len(df) == 0:
-            # Nothing to export
-            return
-        for experiment, exp_df in df.groupby("experiment_name"):
-            prog_task = progress.add_task(f"Exporting {experiment}…", total=len(exp_df))
-            experiment_dir = base_dir / experiment
-            exp = await prepare_experiment(experiment_dir, name=experiment)
+    with LiveTable() as table:
+        # Process runs as they become available
+        async for experiment, exp_df in fetch_experiments(catalog, queries):
+            # Update the progress bar
+            experiment_dir = base_dir / experiment if base_dir else None
+            if experiment_dir is not None and len(exp_df) > 0:
+                exp = await prepare_experiment(experiment_dir, name=experiment)
             for idx, row in exp_df.iterrows():
-                run = await runs[row.uid]
-                await export_run(
-                    run,
-                    base_dir=experiment_dir,
-                    use_xdi=use_xdi,
-                    use_nexus=use_nexus,
-                    rewrite_hdf_links=rewrite_hdf_links,
+                run = await catalog[row.uid]
+                table.add_run(
+                    idx=idx,
+                    uid=row.uid,
+                    start_time=row.start_time,
+                    exit_status=row.exit_status,
+                    beamline=row.beamline,
+                    sample_name=row.sample_name,
+                    scan_name=row.scan_name,
+                    plan_name=row.plan_name,
                 )
-                # Update the experiment's jupyter notebook
-                base_name = build_base_name(run.metadata)
-                xdi_file = experiment_dir / f"{base_name}{extensions[MimeType.XDI]}"
-                hdf_file = experiment_dir / f"{base_name}{extensions[MimeType.NEXUS]}"
-                if to_jupyter:
-                    await add_run_to_notebook(
-                        run=run,
-                        notebook=exp.notebook,
-                        xdi_file=xdi_file,
-                        hdf_file=hdf_file,
+                if experiment_dir is not None:
+                    coro = export_run(
+                        run,
+                        base_dir=experiment_dir,
+                        use_xdi=use_xdi,
+                        use_nexus=use_nexus,
+                        rewrite_hdf_links=rewrite_hdf_links,
                     )
-                progress.update(prog_task, advance=1)
+                    await table.track(
+                        coro, name=f"Exporting {experiment}", total=len(exp_df)
+                    )
+                    # Update the experiment's jupyter notebook
+                    base_name = build_base_name(run.metadata)
+                    xdi_file = experiment_dir / f"{base_name}{extensions[MimeType.XDI]}"
+                    hdf_file = (
+                        experiment_dir / f"{base_name}{extensions[MimeType.NEXUS]}"
+                    )
+                    if to_jupyter:
+                        await add_run_to_notebook(
+                            run=run,
+                            notebook=exp.notebook,
+                            xdi_file=xdi_file,
+                            hdf_file=hdf_file,
+                        )
             # Prepare summary documents
             parquet_file = base_dir / experiment / "runs_summary.parquet"
             update_summary_files(runs=exp_df, parquet_file=parquet_file)
@@ -283,6 +291,13 @@ def parse_metadata(md):
     }
 
 
+def valid_datetime(value: str) -> float:
+    try:
+        return dt.datetime.fromisoformat(value).timestamp()
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"not a valid date: {value!r}")
+
+
 def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="export-runs",
@@ -319,6 +334,13 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         required=default_profile is None,
         default=default_profile,
     )
+    parser.add_argument(
+        "--watch",
+        "-w",
+        action="store_true",
+        help="Watch for new runs and export them automatically. (experimental)",
+    )
+
     # Arguments for filtering runs
     parser.add_argument(
         "--failed",
@@ -344,13 +366,15 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     )
     parser.add_argument(
         "--before",
+        "-B",
         help="Only include runs before this timestamp. E.g. 2025-04-22T8:00:00.",
-        type=str,
+        type=valid_datetime,
     )
     parser.add_argument(
         "--after",
+        "-A",
         help="Only include runs after this ISO datetime. E.g. 2025-04-22T8:00:00.",
-        type=str,
+        type=valid_datetime,
     )
     parser.add_argument("--uid", help="Export runs with this UID.", type=str)
     # Arguments for export formats
@@ -393,32 +417,32 @@ async def _main(argv=None):
     # Get the list of runs we need
     catalog = await from_profile_async(args.tiled_profile)
     exit_status = None if args.failed else "success"
-    qs = build_queries(
+    # Build the filter queries from command line args
+    queries = QuerySet(
         before=args.before,
         after=args.after,
-        esaf=args.esaf,
-        proposal=args.proposal,
-        beamline=args.beamline,
+        exit_status=None if args.failed else "success",
         plan_name=args.plan,
         sample_name=args.sample,
         sample_formula=args.formula,
         scan_name=args.scan,
         edge=args.edge,
+        proposal=args.proposal,
+        esaf=args.esaf,
+        beamline=args.beamline,
         uid=args.uid,
-        exit_status=exit_status,
     )
-    runs = catalog
-    for query in qs:
-        runs = runs.search(query)
     # Save each run to disk
     base_dir = Path(args.base_dir) if args.base_dir is not None else None
     await export_runs(
         base_dir=base_dir,
-        runs=runs,
+        queries=queries,
+        catalog=catalog,
         use_xdi=args.xdi,
         use_nexus=args.hdf,
         to_jupyter=args.notebook,
         rewrite_hdf_links=args.hdf_expand,
+        watch=args.watch,
     )
 
 
