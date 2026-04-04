@@ -1,6 +1,7 @@
 from pathlib import Path
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 from unittest import mock
+import json
 
 import h5py
 import numpy as np
@@ -69,7 +70,6 @@ async def test_apply_queryset(mocker):
     assert catalog.search.call_count == 2
 
 
-@pytest.mark.skip(reason="Needs to be re-written to work with bluesky run schema.")
 @pytest.mark.asyncio
 async def test_harden_link(temp_h5_file):
     src_file = NamedTemporaryFile(delete_on_close=False, suffix=".h5")
@@ -81,16 +81,75 @@ async def test_harden_link(temp_h5_file):
         # Create a link to the source data
         link_file.close()
         with h5py.File(link_file.name, mode="w") as target_file:
-            target_file["target_link"] = h5py.ExternalLink(src_file.name, "/src_data")
-            target_file["target_link"].attrs["spam"] = "eggs"
-            assert isinstance(
-                target_file.get("target_link", getlink=True), h5py.ExternalLink
+            nxpath = "/run_name/instrument/bluesky/streams/primary/signal"
+            target_file[f"{nxpath}/value"] = h5py.ExternalLink(
+                src_file.name, "/src_data"
             )
-            harden_external_links(parent=target_file, link_path="target_link")
+            target_file[nxpath].attrs["spam"] = "eggs"
             assert isinstance(
-                target_file.get("target_link", getlink=True), h5py.HardLink
+                target_file.get(f"{nxpath}/value", getlink=True), h5py.ExternalLink
+            )
+            harden_external_links(target_file["run_name"])
+            assert isinstance(
+                target_file.get(f"{nxpath}/value", getlink=True), h5py.HardLink
             )
             assert len(target_file.keys()) == 1
+
+
+@pytest.mark.asyncio
+async def test_harden_data_sources(temp_h5_file):
+    test_array = np.random.random((10, 20, 30))
+    src_file = NamedTemporaryFile(delete_on_close=False, suffix=".h5")
+    link_file = NamedTemporaryFile(delete_on_close=False, suffix=".h5")
+    with src_file, link_file:
+        # Create source data to copy
+        with h5py.File(src_file, mode="w") as src_h5fd:
+            src_h5fd["/entry/data/data"] = test_array
+        # Create a link to the source data
+        link_file.close()
+        with h5py.File(link_file.name, mode="w") as target_file:
+            nxpath = "/run_name/instrument/bluesky/streams/primary/signal"
+            target_file.create_group(nxpath)
+            target_file[nxpath].attrs["spam"] = "eggs"
+            target_file[nxpath].attrs["data_sources"] = json.dumps(
+                [
+                    {
+                        "structure_family": "array",
+                        "structure": {
+                            "data_type": {
+                                "endianness": "little",
+                                "kind": "f",
+                                "itemsize": 4,
+                                "dt_units": None,
+                            },
+                            "chunks": [[10], [20], [30]],
+                            "shape": [10, 20, 30],
+                            "dims": None,
+                            "resizable": False,
+                        },
+                        "id": 73,
+                        "mimetype": "application/x-hdf5",
+                        "parameters": {"dataset": "/entry/data/data", "swmr": True},
+                        "properties": {},
+                        "assets": [
+                            {
+                                "data_uri": f"file://localhost{src_file.name}",
+                                "is_directory": False,
+                                "parameter": "data_uris",
+                                "num": 0,
+                                "id": 28,
+                            }
+                        ],
+                        "management": "external",
+                    },
+                ]
+            )
+            harden_external_links(target_file["run_name"])
+            assert isinstance(
+                target_file.get(f"{nxpath}/value", getlink=True), h5py.HardLink
+            )
+            assert len(target_file.keys()) == 1
+            np.testing.assert_equal(target_file[f"{nxpath}/value"], test_array)
 
 
 @pytest.mark.asyncio

@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import datetime as dt
+import json
 import logging
 import os
 import re
@@ -461,10 +462,34 @@ def external_data_links(
                 yield data, link
 
 
+def external_data_sources(
+    entry: h5py.Group,
+) -> Generator[tuple[h5py.Group, h5py.ExternalLink], Any, None]:
+    """Load composite data sources stashed by the Tiled server.
+
+    Yields pairs of (group, data_sources) for each signal that has a
+    `data_sources` attribute.
+
+    """
+    for stream in entry["instrument/bluesky/streams"].values():
+        for data in stream.values():
+            if "data_sources" not in data.attrs:
+                continue
+            # De-serialize the data sources added by the Tiled exporter
+            sources = data.attrs["data_sources"]
+            sources = json.loads(sources)
+            yield data, sources
+
+
 def harden_external_links(entry: h5py.Group):
     """Replace external links with copies of the target."""
     src_filename = Path(entry.file.filename)
+    # Single-array soft links
     for data, link in external_data_links(entry):
+        if "data_sources" in data.attrs:
+            # This dataset will be resolved alongside multi-array
+            # sources below
+            continue
         # Sort out where all the paths should point
         target_path, path = Path(link.filename), link.path
         # Copy the dataset into the target HDF5 file
@@ -473,6 +498,46 @@ def harden_external_links(entry: h5py.Group):
             target_fd[path]
             del data["value"]
             target_fd.copy(target_fd[path], data, "value")
+    # Multi-array data sources stored in group attrs
+    for data, sources in external_data_sources(entry):
+        if len(sources) < 1:
+            continue
+        if len(sources) > 1:
+            raise ValueError(
+                "Exporter cannot yet harden multi-source data. "
+                "Please submit an issue describing the use case."
+            )
+        (source,) = sources
+        insert_data_source(data, source)
+
+
+def insert_data_source(parent: h5py.Group, source: Mapping):
+    # Create an empty array to hold the copied sources
+    dtype_kind = source["structure"]["data_type"]["kind"]
+    dtype_size = source["structure"]["data_type"]["itemsize"]
+    dtype = f"{dtype_kind}{dtype_size*4}"
+    if "value" in parent.keys():
+        del parent["value"]
+    ds = parent.create_dataset(
+        "value",
+        shape=source["structure"]["shape"],
+        dtype=dtype,
+        compression="szip",
+    )
+    # Open and copy data from source files
+    source_path = source["parameters"]["dataset"]
+    assets = sorted(source["assets"], key=lambda asset: asset["num"])
+    start = 0
+    for asset in assets:
+        uri = asset["data_uri"]
+        if not uri.startswith("file://localhost"):
+            raise ValueError(f"Cannot process data source uri: {uri}")
+        source_file = uri.removeprefix("file://localhost")
+        with h5py.File(source_file, mode="r") as src_fd:
+            src_ds = src_fd[source_path]
+            stop = start + src_ds.shape[0]
+            ds[start:stop] = src_ds
+        start = stop
 
 
 # -----------------------------------------------------------------------------
