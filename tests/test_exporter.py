@@ -1,7 +1,7 @@
+import json
 from pathlib import Path
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 from unittest import mock
-import json
 
 import h5py
 import numpy as np
@@ -98,7 +98,7 @@ async def test_harden_link(temp_h5_file):
 
 @pytest.mark.asyncio
 async def test_harden_data_sources(temp_h5_file):
-    test_array = np.random.random((10, 20, 30))
+    test_array = np.random.random((10, 20, 30)).astype("float32")
     src_file = NamedTemporaryFile(delete_on_close=False, suffix=".h5")
     link_file = NamedTemporaryFile(delete_on_close=False, suffix=".h5")
     with src_file, link_file:
@@ -150,6 +150,7 @@ async def test_harden_data_sources(temp_h5_file):
             )
             assert len(target_file.keys()) == 1
             np.testing.assert_equal(target_file[f"{nxpath}/value"], test_array)
+            assert target_file[f"{nxpath}/value"].dtype == "float32"
 
 
 @pytest.mark.asyncio

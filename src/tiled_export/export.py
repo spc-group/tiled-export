@@ -515,7 +515,7 @@ def insert_data_source(parent: h5py.Group, source: Mapping):
     # Create an empty array to hold the copied sources
     dtype_kind = source["structure"]["data_type"]["kind"]
     dtype_size = source["structure"]["data_type"]["itemsize"]
-    dtype = f"{dtype_kind}{dtype_size*4}"
+    dtype = f"{dtype_kind}{dtype_size}"
     if "value" in parent.keys():
         del parent["value"]
     ds = parent.create_dataset(
