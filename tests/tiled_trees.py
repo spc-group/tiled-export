@@ -207,7 +207,9 @@ data_keys = {
         "dtype_numpy": "<f8",
         "object_name": "I0",
         "shape": [],
-        "source": "soft://I0-net_current(gain,count,clock_count,clock_frequency,counts_per_volt_second)",
+        "source": (
+            "soft://I0-net_current(gain,count,clock_count,clock_frequency,counts_per_volt_second)"
+        ),
         "units": "A",
     },
     "It-net_current": {
@@ -215,7 +217,9 @@ data_keys = {
         "dtype_numpy": "<f8",
         "object_name": "It",
         "shape": [],
-        "source": "soft://It-net_current(gain,count,clock_count,clock_frequency,counts_per_volt_second)",
+        "source": (
+            "soft://It-net_current(gain,count,clock_count,clock_frequency,counts_per_volt_second)"
+        ),
         "units": "A",
     },
     "ge_8element": {
